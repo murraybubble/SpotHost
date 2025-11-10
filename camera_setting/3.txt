@@ -1,0 +1,2 @@
+exposure: 10000
+gain: 50

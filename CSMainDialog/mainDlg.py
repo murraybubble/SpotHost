@@ -14,7 +14,10 @@ from spot_detection import preprocess_image_cv, detect_and_draw_spots, energy_di
 from reconstruction3d import generate_3d_image
 from parameter_calculation import calculate_ideal_divergence, calculate_actual_divergence, calculate_quality_factor
 from RangeFinder_driverForGUI import DistanceMeterManager, ContinuousMeasureThread, ProtocolConst, MeasureResult
-from camera_control import AutoAdjustExposureGain, SetupExposure, SetupGain, g_autoAdjust
+from camera_control import (
+    AutoAdjustExposureGain, SetupExposure, SetupGain,
+    g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
+)
 from image_cropper import CropDialog
 
 from camera_2 import Camera2Widget
@@ -47,10 +50,10 @@ class main_Dialog(QWidget):
         self.counter = 0
         self.stop = False
         self.parView = None
-        
+
         # 初始化相机系统
         self.PyIpxSystem1 = IpxCameraGuiApiPy.PyIpxSystem()
-        
+
         self.init_ui()
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.log_signal.connect(self.add_log)
@@ -59,30 +62,19 @@ class main_Dialog(QWidget):
         self.cropped_image_signal.connect(self._process_cropped_image)
         self.range_result_signal.connect(self.update_range_display)
 
-    # =========================================================
-    # 首先定义所有方法，然后再初始化UI
-    # =========================================================
     def closeEvent(self, event):
         """关闭事件，确保所有相机线程都停止"""
-        # 停止相机1
         self.camDisconnect()
-        
-        # 停止相机2和3
+
         for i in range(self.camera_stack.count()):
             widget = self.camera_stack.widget(i)
             if hasattr(widget, 'stop_camera'):
                 widget.stop_camera()
-        
-        # 停止测距机
+
         if self.range_meter.connected:
             self.range_meter.disconnect()
-            
+
         super(main_Dialog, self).closeEvent(event)
-    # def closeEvent(self, event):
-    #     self.camDisconnect()
-    #     if self.range_meter.connected:
-    #         self.range_meter.disconnect()
-    #     super(main_Dialog, self).closeEvent(event)
 
     def add_log(self, message):
         timestamp = time.strftime("%H:%M:%S", time.localtime())
@@ -475,6 +467,8 @@ class main_Dialog(QWidget):
         self.pbAutoAdjust.setEnabled(1)
         self.pbConfirmSettings.setEnabled(1)
         self.pbCropImage.setEnabled(1)
+        self.pbSaveSettings.setEnabled(1)
+        self.pbLoadSettings.setEnabled(1)
 
         self.infoTable.setItem(0, 1, QTableWidgetItem(self.deviceInfo.GetVendor()))
         self.infoTable.setItem(1, 1, QTableWidgetItem(self.deviceInfo.GetModel()))
@@ -517,6 +511,8 @@ class main_Dialog(QWidget):
         self.pbAutoAdjust.setEnabled(0)
         self.pbConfirmSettings.setEnabled(0)
         self.pbCropImage.setEnabled(0)
+        self.pbSaveSettings.setEnabled(0)
+        self.pbLoadSettings.setEnabled(0)
         self.log("Camera disconnected")
 
     def camPlay(self):
@@ -581,32 +577,54 @@ class main_Dialog(QWidget):
         self.parameter_calculation_window.show()
 
     def switch_camera(self, index):
-        """切换相机界面"""
-        # 切换到新相机前停止当前相机（如果需要）
         current_widget = self.camera_stack.currentWidget()
         if hasattr(current_widget, 'stop_camera'):
             current_widget.stop_camera()
-        
+
         self.camera_stack.setCurrentIndex(index)
         self.btn_camera1.setChecked(index == 0)
         self.btn_camera2.setChecked(index == 1)
         self.btn_camera3.setChecked(index == 2)
-        
+
         camera_names = ["相机1", "长波红外相机", "中波红外相机"]
         self.log(f"切换至{camera_names[index]}界面")
 
-    # =========================================================
-    # 现在初始化UI，所有方法都已经定义
-    # =========================================================
+    def save_camera_settings(self):
+        if not hasattr(self, 'device') or not self.device.IsValid():
+            self.log("相机未连接，无法保存参数")
+            QMessageBox.critical(self, "错误", "相机未连接")
+            return
+        if SaveExposureAndGain(self.device):
+            self.log("相机参数（快门时间与增益）已成功保存到 camera_settings.txt")
+            QMessageBox.information(self, "成功", "参数保存成功")
+        else:
+            self.log("保存相机参数失败")
+            QMessageBox.critical(self, "错误", "保存失败，请查看日志")
+
+    def load_camera_settings(self):
+        if not hasattr(self, 'device') or not self.device.IsValid():
+            self.log("相机未连接，无法加载参数")
+            QMessageBox.critical(self, "错误", "相机未连接")
+            return
+        if LoadExposureAndGain(self.device):
+            self.log("相机参数已从 camera_settings.txt 成功加载并应用")
+            QMessageBox.information(self, "成功", "参数加载成功")
+            pars = self.device.GetCameraParameters()
+            parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
+            parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
+            if parExp and parG:
+                self.shutter_input.setText(f"{parExp.GetValue()[1]:.2f}")
+                self.gain_input.setText(f"{parG.GetValue()[1]:.2f}")
+        else:
+            self.log("加载相机参数失败")
+            QMessageBox.critical(self, "错误", "加载失败，请查看日志")
 
     def init_ui(self):
-        # 应用样式（与之前相同）
         self.setStyleSheet("""
             QWidget {
                 font-family: "Segoe UI", "Microsoft YaHei";
                 font-size: 9pt;
             }
-            /* 顶部菜单栏样式 */
             QWidget#top_menu {
                 background-color: #2d3e50;
                 border-bottom: 2px solid #1a2530;
@@ -632,7 +650,6 @@ class main_Dialog(QWidget):
                 background-color: #465669;
                 color: #7f8c8d;
             }
-            /* 功能区样式 */
             QWidget#function_area {
                 background-color: #ecf0f1;
                 border: 1px solid #bdc3c7;
@@ -657,7 +674,6 @@ class main_Dialog(QWidget):
                 color: #95a5a6;
                 border: 1px solid #ddd;
             }
-            /* 分组框样式 */
             QGroupBox {
                 font-weight: bold;
                 color: #2c3e50;
@@ -671,7 +687,6 @@ class main_Dialog(QWidget):
                 left: 10px;
                 padding: 0 5px 0 5px;
             }
-            /* 表格样式 */
             QTableWidget {
                 background-color: white;
                 border: 1px solid #bdc3c7;
@@ -682,7 +697,6 @@ class main_Dialog(QWidget):
                 padding: 4px;
                 border-bottom: 1px solid #ecf0f1;
             }
-            /* 输入框样式 */
             QLineEdit {
                 background-color: white;
                 border: 1px solid #bdc3c7;
@@ -693,7 +707,6 @@ class main_Dialog(QWidget):
             QLineEdit:focus {
                 border: 1px solid #3498db;
             }
-            /* 标签样式 */
             QLabel {
                 color: #2c3e50;
             }
@@ -703,14 +716,12 @@ class main_Dialog(QWidget):
                 color: #2c3e50;
                 padding: 4px;
             }
-            /* 文本编辑框样式 */
             QTextEdit {
                 background-color: white;
                 border: 1px solid #bdc3c7;
                 border-radius: 3px;
                 padding: 4px;
             }
-            /* 图像显示区域 */
             QLabel#image_display {
                 background-color: #2c3e50;
                 color: white;
@@ -719,7 +730,6 @@ class main_Dialog(QWidget):
             }
         """)
 
-        # === 顶部相机菜单栏 ===
         top_menu_widget = QWidget()
         top_menu_widget.setObjectName("top_menu")
         top_menu_widget.setFixedHeight(50)
@@ -727,36 +737,31 @@ class main_Dialog(QWidget):
         top_menu_layout.setContentsMargins(10, 5, 10, 5)
         top_menu_layout.setSpacing(8)
 
-        # 相机选择按钮
         self.btn_camera1 = QPushButton("📷 相机1")
-        self.btn_camera2 = QPushButton("📷 相机2") 
+        self.btn_camera2 = QPushButton("📷 相机2")
         self.btn_camera3 = QPushButton("📷 相机3")
-        
+
         for btn in [self.btn_camera1, self.btn_camera2, self.btn_camera3]:
             btn.setObjectName("menu_btn")
             btn.setCheckable(True)
             btn.setFixedHeight(36)
             top_menu_layout.addWidget(btn)
-        
+
         top_menu_layout.addStretch()
-        
-        # 系统标题
+
         title_label = QLabel("光斑识别系统 v1.0")
         title_label.setStyleSheet("color: #ecf0f1; font-size: 14pt; font-weight: bold; padding: 8px;")
         top_menu_layout.addWidget(title_label)
-        
+
         self.btn_camera1.setChecked(True)
 
-        # === 相机堆叠容器 ===
         self.camera_stack = QStackedWidget()
 
-        # ---------- 相机1：原界面 ----------
         camera1_widget = QWidget()
         camera1_layout = QVBoxLayout(camera1_widget)
         camera1_layout.setSpacing(8)
         camera1_layout.setContentsMargins(10, 10, 10, 10)
 
-        # ======== 功能区1：相机控制 ========
         control_group = QWidget()
         control_group.setObjectName("function_area")
         control_layout = QHBoxLayout(control_group)
@@ -770,7 +775,6 @@ class main_Dialog(QWidget):
             btn.setFixedHeight(32)
             return btn
 
-        # 现在这些方法都已经定义，可以安全引用
         self.pbConnect = create_function_btn('🔗 Connect', self.camConnect, True)
         self.pbDisconnect = create_function_btn('🔌 Disconnect', self.camDisconnect, False)
         self.pbPlay = create_function_btn('▶ Play', self.camPlay, False)
@@ -781,9 +785,9 @@ class main_Dialog(QWidget):
         self.pbCropImage = create_function_btn('✂️ 裁切图像', self.crop_image, False)
         self.pbShow3D = create_function_btn('📊 Show 3D', self.show_3d_image, True)
         self.pbSaveAll = create_function_btn('💿 Save All', self.save_all, True)
-        self.pbParameterCalculation = create_function_btn('📐 Parameter Calculation', self.open_parameter_calculation_window, True)
+        self.pbParameterCalculation = create_function_btn('📐 Parameter Calculation',
+                                                          self.open_parameter_calculation_window, True)
 
-        # 添加到控制布局
         control_layout.addWidget(self.pbConnect)
         control_layout.addWidget(self.pbDisconnect)
         control_layout.addWidget(self.pbPlay)
@@ -799,18 +803,15 @@ class main_Dialog(QWidget):
 
         camera1_layout.addWidget(control_group)
 
-        # ======== 主内容区域 ========
         content_widget = QWidget()
         content_layout = QHBoxLayout(content_widget)
         content_layout.setSpacing(10)
 
-        # 左侧控制面板
         left_panel = QWidget()
         left_panel.setMaximumWidth(350)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setSpacing(10)
 
-        # 设备信息组
         device_group = QGroupBox("设备信息")
         device_layout = QVBoxLayout(device_group)
         self.infoTable = QTableWidget()
@@ -818,48 +819,52 @@ class main_Dialog(QWidget):
         device_layout.addWidget(self.infoTable)
         left_layout.addWidget(device_group)
 
-        # 测距机控制组
         left_layout.addWidget(self.init_range_control())
 
-        # 相机设置组
         settings_group = QGroupBox("相机设置")
         settings_layout = QGridLayout(settings_group)
-        
+
         self.pbAutoAdjust = create_function_btn('🔄 Auto Adjust', self.auto_adjust)
         self.pbAutoAdjust.setEnabled(False)
         settings_layout.addWidget(self.pbAutoAdjust, 0, 0, 1, 2)
-        
+
         settings_layout.addWidget(QLabel('Shutter Time (μs):'), 1, 0)
         self.shutter_input = QLineEdit()
         self.shutter_input.setPlaceholderText('Enter shutter time')
         settings_layout.addWidget(self.shutter_input, 1, 1)
-        
+
         settings_layout.addWidget(QLabel('Gain:'), 2, 0)
         self.gain_input = QLineEdit()
         self.gain_input.setPlaceholderText('Enter gain')
         settings_layout.addWidget(self.gain_input, 2, 1)
-        
+
         self.pbConfirmSettings = create_function_btn('✅ Confirm Settings', self.confirm_settings)
         self.pbConfirmSettings.setEnabled(False)
         settings_layout.addWidget(self.pbConfirmSettings, 3, 0, 1, 2)
-        
+
+        self.pbSaveSettings = create_function_btn('💾 保存参数', self.save_camera_settings)
+        self.pbSaveSettings.setEnabled(False)
+        settings_layout.addWidget(self.pbSaveSettings, 4, 0, 1, 2)
+
+        self.pbLoadSettings = create_function_btn('📂 加载参数', self.load_camera_settings)
+        self.pbLoadSettings.setEnabled(False)
+        settings_layout.addWidget(self.pbLoadSettings, 5, 0, 1, 2)
+
         left_layout.addWidget(settings_group)
         left_layout.addStretch()
 
-        # 右侧显示区域
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setSpacing(10)
 
-        # 图像显示区域
         display_group = QGroupBox("图像显示")
         display_layout = QGridLayout(display_group)
-        
+
         self.label1 = QLabel("原始图像")
-        self.label2 = QLabel("光斑识别") 
+        self.label2 = QLabel("光斑识别")
         self.label3 = QLabel("能量分布")
         self.label4 = QLabel("3D重构")
-        
+
         for i, label in enumerate([self.label1, self.label2, self.label3, self.label4]):
             label.setObjectName("image_display")
             label.setFixedSize(320, 240)
@@ -873,15 +878,14 @@ class main_Dialog(QWidget):
                     font-weight: bold;
                 }
             """)
-        
+
         display_layout.addWidget(self.label1, 0, 0)
-        display_layout.addWidget(self.label2, 0, 1) 
+        display_layout.addWidget(self.label2, 0, 1)
         display_layout.addWidget(self.label3, 1, 0)
         display_layout.addWidget(self.label4, 1, 1)
-        
+
         right_layout.addWidget(display_group)
 
-        # 系统日志组
         log_group = QGroupBox("系统日志")
         log_layout = QVBoxLayout(log_group)
         self.log_text_edit = QTextEdit()
@@ -896,29 +900,22 @@ class main_Dialog(QWidget):
         camera1_layout.addWidget(content_widget)
         self.camera_stack.addWidget(camera1_widget)
 
-        # ---------- 相机2/3 占位界面 ----------
-
-        # ---------- 相机2：长波红外相机 ----------
         camera2_widget = Camera2Widget()
         self.camera_stack.addWidget(camera2_widget)
 
-        # ---------- 相机3：中波红外相机 ----------
         camera3_widget = Camera3Widget()
         self.camera_stack.addWidget(camera3_widget)
 
-        # === 主布局 ===
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(top_menu_widget)
         main_layout.addWidget(self.camera_stack)
 
-        # === 连接信号 ===
         self.btn_camera1.clicked.connect(lambda: self.switch_camera(0))
-        self.btn_camera2.clicked.connect(lambda: self.switch_camera(1)) 
+        self.btn_camera2.clicked.connect(lambda: self.switch_camera(1))
         self.btn_camera3.clicked.connect(lambda: self.switch_camera(2))
 
-        # 设置窗口属性
         self.setWindowTitle("光斑识别系统")
         self.setMinimumSize(1400, 900)
         self.refresh_ports()
@@ -942,7 +939,6 @@ class main_Dialog(QWidget):
         range_panel = QGroupBox("测距机控制")
         range_layout = QVBoxLayout(range_panel)
 
-        # 串口选择
         port_layout = QHBoxLayout()
         port_layout.addWidget(QLabel("串口:"))
         self.port_combo = QComboBox()
@@ -953,7 +949,6 @@ class main_Dialog(QWidget):
         port_layout.addWidget(self.refresh_port_btn)
         range_layout.addLayout(port_layout)
 
-        # 连接控制
         connect_layout = QHBoxLayout()
         self.connect_range_btn = QPushButton("🔗 连接测距机")
         self.connect_range_btn.setObjectName("func_btn")
@@ -967,7 +962,6 @@ class main_Dialog(QWidget):
         connect_layout.addWidget(self.disconnect_range_btn)
         range_layout.addLayout(connect_layout)
 
-        # 测距控制
         measure_layout = QHBoxLayout()
         self.single_measure_btn = QPushButton("📏 单次测距")
         self.single_measure_btn.setObjectName("func_btn")
@@ -982,7 +976,6 @@ class main_Dialog(QWidget):
         measure_layout.addWidget(self.continuous_measure_btn)
         range_layout.addLayout(measure_layout)
 
-        # 频率选择
         freq_layout = QHBoxLayout()
         freq_layout.addWidget(QLabel("连续测距频率:"))
         self.freq_combo = QComboBox()
@@ -991,7 +984,6 @@ class main_Dialog(QWidget):
         freq_layout.addWidget(self.freq_combo)
         range_layout.addLayout(freq_layout)
 
-        # 测距结果显示
         range_layout.addWidget(QLabel("测距结果:"))
         self.range_result_table = QTableWidget()
         self.range_result_table.setRowCount(5)
@@ -1011,15 +1003,6 @@ class main_Dialog(QWidget):
         return range_panel
 
 
-# # ParameterCalculationWindow 类保持不变（与之前相同）
-# class ParameterCalculationWindow(QDialog):
-#     def __init__(self):
-#         super(ParameterCalculationWindow, self).__init__()
-#         # ... [保持与之前相同的代码] ...
-#         # 由于篇幅限制，这里省略重复代码
-#         pass
-
-# 参数计算窗口也采用相同风格
 class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
@@ -1051,20 +1034,17 @@ class ParameterCalculationWindow(QDialog):
                 background-color: #2980b9;
             }
         """)
-        
+
         self.setWindowTitle('参数计算')
         self.setMinimumSize(600, 400)
         self.layout = QVBoxLayout(self)
 
-        # 创建网格布局
         grid_layout = QGridLayout()
         grid_layout.setSpacing(10)
-        
-        # 输入参数区域
+
         input_group = QGroupBox("输入参数")
         input_layout = QGridLayout(input_group)
-        
-        # 标签和输入框
+
         self.label1 = QLabel("波长 (nm):")
         self.input_wavelength = QLineEdit()
         self.input_wavelength.setText("1064")
@@ -1095,7 +1075,6 @@ class ParameterCalculationWindow(QDialog):
         input_layout.addWidget(self.label5, 4, 0)
         input_layout.addWidget(self.input_transmission_distance, 4, 1)
 
-        # 计算结果区域
         result_group = QGroupBox("计算结果")
         result_layout = QGridLayout(result_group)
 
@@ -1121,7 +1100,6 @@ class ParameterCalculationWindow(QDialog):
         grid_layout.addWidget(result_group, 0, 1)
         self.layout.addLayout(grid_layout)
 
-        # 计算按钮
         self.submit_button = QPushButton('🔢 开始计算')
         self.submit_button.clicked.connect(self.calculate_parameters)
         self.layout.addWidget(self.submit_button)
@@ -1136,7 +1114,6 @@ class ParameterCalculationWindow(QDialog):
             laser_power = float(self.input_laser_power.text().strip())
             transmission_distance = float(self.input_transmission_distance.text().strip())
 
-            # 参数验证
             if wavelength <= 0 or wavelength < 10 or wavelength > 1000:
                 raise ValueError("波长应大于 0 且在 10 到 1000 纳米之间")
             if laser_power <= 0:
@@ -1148,15 +1125,20 @@ class ParameterCalculationWindow(QDialog):
             if transmission_distance <= 0:
                 raise ValueError("传输距离应大于 0")
 
-            # 调用计算函数
             ideal_divergence = calculate_ideal_divergence(wavelength, aperture)
             actual_divergence = calculate_actual_divergence(spot_diameter, aperture, transmission_distance)
             quality_factor = calculate_quality_factor(actual_divergence, ideal_divergence)
 
-            # 更新显示
             self.output_ideal_divergence.setText(f"{ideal_divergence:.3e} rad")
             self.output_actual_divergence.setText(f"{actual_divergence:.3e} rad")
             self.output_quality_factor.setText(f"{quality_factor:.3e}")
 
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = main_Dialog()
+    window.show()
+    sys.exit(app.exec_())

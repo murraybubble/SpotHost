@@ -4,11 +4,21 @@ import platform
 import cv2
 import numpy as np
 import time
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
-# 全局变量用于快门时间和增益设置
+# 隐藏 tkinter 主窗口
+root = tk.Tk()
+root.withdraw()  # 隐藏主窗口
+
+# 全局变量
 g_expValue = -1.0
 g_gain = -1.0
 g_autoAdjust = False
+
+# 设置文件夹
+SETTINGS_DIR = "camera_setting"
+os.makedirs(SETTINGS_DIR, exist_ok=True)  # 自动创建文件夹
 
 if platform.system() == 'Windows':
     sys.path.append(os.environ.get('IPX_CAMSDK_ROOT', '') + '/bin/win64_x64/')
@@ -18,9 +28,7 @@ else:
     import libIpxCameraApiPy as IpxCameraApiPy
 
 def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
-    """
-    自动调节曝光（ExposureTimeRaw）和增益（GainRaw），使图像整体平均亮度靠近 target。
-    """
+    # （保持原函数不变）
     pars = camera.GetCameraParameters()
     parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
     parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
@@ -45,9 +53,7 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
         return False
 
     try:
-        # 清空现有缓冲区
         stream.FlushBuffers(stream.Flush_AllDiscard)
-        # 创建并入队缓冲区
         bufSize = stream.GetBufferSize()
         numBuf = max(4, stream.GetMinNumBuffers())
         buffers = [stream.CreateBuffer(bufSize) for _ in range(numBuf)]
@@ -56,7 +62,7 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
 
         stream.StartAcquisition()
         pars.ExecuteCommand("AcquisitionStart")
-        time.sleep(0.5)  # 增加等待时间以确保相机稳定
+        time.sleep(0.5)
 
         for i in range(max_iter):
             buf = stream.GetBuffer(1000)
@@ -89,7 +95,6 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
         print(f"自动调节过程中发生错误: {str(e)}")
         return False
     finally:
-        # 停止采集并清理缓冲区
         try:
             pars.ExecuteCommand("AcquisitionStop")
             stream.StopAcquisition(1)
@@ -104,9 +109,7 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
     return True
 
 def SetupExposure(camera, expValue):
-    """
-    设置快门时间（ExposureTimeRaw），使用提供的 expValue。
-    """
+    # （保持原函数不变）
     pars = camera.GetCameraParameters()
     if pars is None:
         print("错误：无法获取相机参数")
@@ -140,9 +143,7 @@ def SetupExposure(camera, expValue):
         return False
 
 def SetupGain(camera, gainValue):
-    """
-    设置增益（GainRaw），使用提供的 gainValue。
-    """
+    # （保持原函数不变）
     pars = camera.GetCameraParameters()
     if pars is None:
         print("错误：无法获取相机参数")
@@ -173,4 +174,92 @@ def SetupGain(camera, gainValue):
         return True
     except Exception as e:
         print(f'设置增益失败: {e}')
+        return False
+
+def SaveExposureAndGain(camera):
+    """
+    保存当前相机的快门时间和增益到用户指定的文件（弹窗选择文件名）
+    文件保存在 camera_setting 文件夹下
+    """
+    pars = camera.GetCameraParameters()
+    if pars is None:
+        messagebox.showerror("错误", "无法获取相机参数")
+        return False
+
+    parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
+    parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
+    if parExp is None or parG is None:
+        messagebox.showerror("错误", "无法获取 ExposureTimeRaw 或 GainRaw 参数")
+        return False
+
+    expValue = parExp.GetValue()[1]
+    gainValue = parG.GetValue()[1]
+
+    # 弹窗让用户选择保存路径和文件名
+    file_path = filedialog.asksaveasfilename(
+        title="保存相机设置",
+        initialdir=SETTINGS_DIR,
+        defaultextension=".txt",
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        initialfile="camera_config.txt"
+    )
+
+    if not file_path:  # 用户取消
+        print("保存取消")
+        return False
+
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(f"exposure: {expValue}\n")
+            f.write(f"gain: {gainValue}\n")
+        print(f"当前设置已保存到: {file_path}")
+        messagebox.showinfo("成功", f"设置已保存到:\n{file_path}")
+        return True
+    except Exception as e:
+        messagebox.showerror("保存失败", f"保存文件失败:\n{str(e)}")
+        return False
+
+def LoadExposureAndGain(camera):
+    """
+    从用户选择的文件中读取快门时间和增益并应用到相机上（弹窗选择文件）
+    """
+    file_path = filedialog.askopenfilename(
+        title="加载相机设置",
+        initialdir=SETTINGS_DIR,
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+    )
+
+    if not file_path:  # 用户取消
+        print("加载取消")
+        return False
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        expValue = None
+        gainValue = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("exposure:"):
+                expValue = float(line.split(":", 1)[1].strip())
+            elif line.startswith("gain:"):
+                gainValue = float(line.split(":", 1)[1].strip())
+
+        if expValue is None or gainValue is None:
+            messagebox.showerror("格式错误", "文件中缺少 exposure 或 gain 值")
+            return False
+
+        # 应用设置
+        if not SetupExposure(camera, expValue):
+            return False
+        if not SetupGain(camera, gainValue):
+            return False
+
+        print(f"从 {file_path} 加载并应用设置成功")
+        messagebox.showinfo("成功", f"已加载设置:\n曝光={expValue}\n增益={gainValue}")
+        return True
+
+    except Exception as e:
+        messagebox.showerror("加载失败", f"读取或应用文件失败:\n{str(e)}")
         return False

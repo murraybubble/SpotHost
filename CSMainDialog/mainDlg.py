@@ -9,7 +9,7 @@ import numpy as np
 import cv2 as cv
 from threading import Thread
 
-sys.path.append(os.path.dirname(__file__))  # 添加当前文件夹到模块搜索路径121
+sys.path.append(os.path.dirname(__file__))  # 添加当前文件夹到模块搜索路径
 from spot_detection import preprocess_image_cv, detect_and_draw_spots, energy_distribution
 from reconstruction3d import generate_3d_image
 from parameter_calculation import calculate_ideal_divergence, calculate_actual_divergence, calculate_quality_factor

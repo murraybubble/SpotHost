@@ -19,7 +19,7 @@ from camera_control import (
     g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
 )
 from image_cropper import CropDialog
-
+from spot_algorithms import detect_spots
 from camera_2 import Camera2Widget
 from camera_3 import Camera3Widget
 
@@ -50,6 +50,7 @@ class main_Dialog(QWidget):
         self.counter = 0
         self.stop = False
         self.parView = None
+        self.algo_type = "A" 
 
         # 初始化相机系统
         self.PyIpxSystem1 = IpxCameraGuiApiPy.PyIpxSystem()
@@ -328,7 +329,7 @@ class main_Dialog(QWidget):
         self.last_original_image = img_color.copy()
 
         gray, blur = preprocess_image_cv(img_color)
-        spots_output = detect_and_draw_spots(img_color, log_func=self.log)
+        spots_output = detect_spots(img_color, self.algo_type)
         heatmap = energy_distribution(gray)
         self.last_gray = gray
 
@@ -799,6 +800,21 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbShow3D)
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
+        control_layout.addWidget(QLabel(" | "))
+        self.btn_grp = QButtonGroup(self)
+        for idx, (name, key) in enumerate([("标准算法","A"),
+                                           ("双光斑算法","B"),
+                                           ("单光斑去噪","C"),
+                                           ("框选识别","D")]):
+            btn = QPushButton(name)
+            btn.setCheckable(True); btn.setObjectName("func_btn")
+            btn.setFixedHeight(32)
+            self.btn_grp.addButton(btn, idx)
+            control_layout.addWidget(btn)
+            if key == "A": btn.setChecked(True)
+        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
+
+        control_layout.addStretch()
         control_layout.addStretch()
 
         camera1_layout.addWidget(control_group)

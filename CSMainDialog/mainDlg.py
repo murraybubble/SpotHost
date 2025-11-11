@@ -786,7 +786,7 @@ class main_Dialog(QWidget):
         self.pbCropImage = create_function_btn('✂️ 裁切图像', self.crop_image, False)
         self.pbShow3D = create_function_btn('📊 Show 3D', self.show_3d_image, True)
         self.pbSaveAll = create_function_btn('💿 Save All', self.save_all, True)
-        self.pbParameterCalculation = create_function_btn('📐 Parameter Calculation',
+        self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
 
         control_layout.addWidget(self.pbConnect)
@@ -1023,7 +1023,7 @@ class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
 
-        self.setWindowTitle('Parameter Calculation')
+        self.setWindowTitle('激光参数计算器')
         self.setMinimumSize(970, 600)
         self.layout = QVBoxLayout(self)
 

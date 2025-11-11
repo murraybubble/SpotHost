@@ -1006,7 +1006,7 @@ class main_Dialog(QWidget):
 class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
-        
+
         self.setWindowTitle('Parameter Calculation')
         self.setMinimumSize(970, 600)
         self.layout = QVBoxLayout(self)
@@ -1225,7 +1225,7 @@ class ParameterCalculationWindow(QDialog):
                 raise ValueError("出射口径应大于0 且小于100毫米")
             if transmission_distance <= 0:
                 raise ValueError("传输距离应大于 0")
-             if distance <= 0:
+            if distance <= 0:
                 raise ValueError("测距机距离应大于 0")
 
             ideal_divergence = calculate_ideal_divergence(wavelength, aperture)

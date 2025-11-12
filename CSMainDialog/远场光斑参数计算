@@ -1,0 +1,23 @@
+import math
+
+def calculate_ideal_divergence(wavelength, aperture):
+    """计算理想半发散角"""
+    # 将波长从纳米转换为米
+    wavelength_m = wavelength * 10**-9
+    # 将出射口径从毫米转换为米
+    aperture_m = aperture * 10**-3
+    return (2*wavelength_m) / (math.pi * aperture_m)
+
+def calculate_actual_divergence(spot_diameter, aperture, transmission_distance):
+    """计算实际半发散角"""
+    # 将半径从毫米转换为米
+    spot_diameter_m = spot_diameter * 10**-3
+    aperture_m = aperture * 10**-3
+    # 将传输距离保持为米
+    return (spot_diameter_m - aperture_m) / (2 * transmission_distance)
+
+def calculate_quality_factor(actual_divergence, ideal_divergence):
+    """计算质量因子M²"""
+    if ideal_divergence == 0:
+        return 0
+    return actual_divergence / ideal_divergence

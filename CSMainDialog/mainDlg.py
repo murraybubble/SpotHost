@@ -19,7 +19,7 @@ from camera_control import (
     g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
 )
 from image_cropper import CropDialog
-
+from spot_algorithms import detect_spots
 from camera_2 import Camera2Widget
 from camera_3 import Camera3Widget
 
@@ -50,6 +50,7 @@ class main_Dialog(QWidget):
         self.counter = 0
         self.stop = False
         self.parView = None
+        self.algo_type = "A" 
 
         # 初始化相机系统
         self.PyIpxSystem1 = IpxCameraGuiApiPy.PyIpxSystem()
@@ -328,7 +329,7 @@ class main_Dialog(QWidget):
         self.last_original_image = img_color.copy()
 
         gray, blur = preprocess_image_cv(img_color)
-        spots_output = detect_and_draw_spots(img_color, log_func=self.log)
+        spots_output = detect_spots(img_color, self.algo_type)
         heatmap = energy_distribution(gray)
         self.last_gray = gray
 
@@ -785,7 +786,7 @@ class main_Dialog(QWidget):
         self.pbCropImage = create_function_btn('✂️ 裁切图像', self.crop_image, False)
         self.pbShow3D = create_function_btn('📊 Show 3D', self.show_3d_image, True)
         self.pbSaveAll = create_function_btn('💿 Save All', self.save_all, True)
-        self.pbParameterCalculation = create_function_btn('📐 Parameter Calculation',
+        self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
 
         control_layout.addWidget(self.pbConnect)
@@ -799,6 +800,21 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbShow3D)
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
+        control_layout.addWidget(QLabel(" | "))
+        self.btn_grp = QButtonGroup(self)
+        for idx, (name, key) in enumerate([("标准算法","A"),
+                                           ("双光斑算法","B"),
+                                           ("单光斑去噪","C"),
+                                           ("框选识别","D")]):
+            btn = QPushButton(name)
+            btn.setCheckable(True); btn.setObjectName("func_btn")
+            btn.setFixedHeight(32)
+            self.btn_grp.addButton(btn, idx)
+            control_layout.addWidget(btn)
+            if key == "A": btn.setChecked(True)
+        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
+
+        control_layout.addStretch()
         control_layout.addStretch()
 
         camera1_layout.addWidget(control_group)
@@ -1006,113 +1022,214 @@ class main_Dialog(QWidget):
 class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #ecf0f1;
-                font-family: "Segoe UI", "Microsoft YaHei";
-            }
-            QLabel {
-                color: #2c3e50;
-                font-weight: bold;
-            }
-            QLineEdit {
-                background-color: white;
-                border: 1px solid #bdc3c7;
-                border-radius: 3px;
-                padding: 6px;
-                margin: 2px;
-            }
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
 
-        self.setWindowTitle('参数计算')
-        self.setMinimumSize(600, 400)
+        self.setWindowTitle('激光参数计算器')
+        self.setMinimumSize(970, 600)
         self.layout = QVBoxLayout(self)
 
+        # 设置布局的边距（左、右、上、下），这里给左、右各添加20px的空白
+        self.layout.setContentsMargins(20, 5, 20, 20)  # 设置上下左右的边距
+        self.layout.setSpacing(15)  # 设置控件之间的间距
+
+        # 添加标题
+        self.title_label = QLabel("激光参数计算器")
+        self.title_label.setAlignment(Qt.AlignCenter)  # 设置标题居中对齐
+        self.title_label.setStyleSheet("font-size: 25px; font-weight: bold; color: #2E3A59;")
+        self.layout.addWidget(self.title_label)
+
+        # 创建一个水平布局来放图片
+        top_layout = QHBoxLayout()
+
+        # 加载图片
+        top_layout = QHBoxLayout()
+        self.image_label = QLabel(self)
+        pixmap = QPixmap("CSMainDialog\远场光斑计算模型\远场光斑计算模型.png")
+        if pixmap.isNull():
+            print("图片加载失败！")
+        else:
+            print("图片加载成功！")
+        self.image_label.setPixmap(pixmap.scaled(500, 400, aspectRatioMode=Qt.KeepAspectRatio))
+        self.image_label.setStyleSheet("border: 3px solid black;")  # 设置3px粗的黑色边框
+
+        # 强制图片左对齐
+        top_layout.addWidget(self.image_label)
+
+        # 创建表格显示区域
+        self.table_widget = QTableWidget(self)
+        self.table_widget.setRowCount(1)
+        self.table_widget.setColumnCount(4)
+        self.table_widget.setHorizontalHeaderLabels(["远-近夹角", "中-近夹角", "远-中夹角", "测试时间"])
+
+
+        # 将表格添加到布局中
+        top_layout.addWidget(self.table_widget)
+
+        # 设置布局的对齐方式，图片和表格左右对齐
+        top_layout.setStretch(0, 1)  # 让图片占更多的空间
+        top_layout.setStretch(1, 2)  # 让表格占更多空间
+
+
+        # 设置 `QHBoxLayout` 左对齐
+        top_layout.setAlignment(Qt.AlignLeft)
+
+        # 创建一个垂直布局，将标题和图片放在一起
+        header_layout = QVBoxLayout()
+        header_layout.addLayout(top_layout)  # 添加图片布局
+        self.layout.addLayout(header_layout)
+
+        # 创建一个网格布局
         grid_layout = QGridLayout()
-        grid_layout.setSpacing(10)
+        grid_layout.setHorizontalSpacing(20)
+        grid_layout.setVerticalSpacing(15)
 
-        input_group = QGroupBox("输入参数")
-        input_layout = QGridLayout(input_group)
-
-        self.label1 = QLabel("波长 (nm):")
+        self.label1 = QLabel("请输入 波长(nm)：")
+        self.label1.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.input_wavelength = QLineEdit()
-        self.input_wavelength.setText("1064")
-        input_layout.addWidget(self.label1, 0, 0)
-        input_layout.addWidget(self.input_wavelength, 0, 1)
+        self.input_wavelength.setStyleSheet("font-size: 14px; height: 30px;")  # 设置输入框字体和高度
+        grid_layout.addWidget(self.label1, 0, 0)
+        grid_layout.addWidget(self.input_wavelength, 0, 1)
 
-        self.label2 = QLabel("出射口径 (mm):")
+        self.label2 = QLabel("请输入 出射口径(mm)：")
+        self.label2.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.input_aperture = QLineEdit()
-        self.input_aperture.setText("10")
-        input_layout.addWidget(self.label2, 1, 0)
-        input_layout.addWidget(self.input_aperture, 1, 1)
+        self.input_aperture.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label2, 1, 0)
+        grid_layout.addWidget(self.input_aperture, 1, 1)
 
-        self.label3 = QLabel("远场光斑直径 (mm):")
+        self.label3 = QLabel("请输入 远场光斑直径(mm)：")
+        self.label3.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.input_spot_diameter = QLineEdit()
-        self.input_spot_diameter.setText("15")
-        input_layout.addWidget(self.label3, 2, 0)
-        input_layout.addWidget(self.input_spot_diameter, 2, 1)
+        self.input_spot_diameter.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label3, 2, 0)
+        grid_layout.addWidget(self.input_spot_diameter, 2, 1)
 
-        self.label4 = QLabel("激光功率 (W):")
+        self.label4 = QLabel("请输入 激光功率(W)：")
+        self.label4.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.input_laser_power = QLineEdit()
-        self.input_laser_power.setText("5")
-        input_layout.addWidget(self.label4, 3, 0)
-        input_layout.addWidget(self.input_laser_power, 3, 1)
+        self.input_laser_power.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label4, 3, 0)
+        grid_layout.addWidget(self.input_laser_power, 3, 1)
 
-        self.label5 = QLabel("传输距离 (m):")
+        self.label5 = QLabel("请输入 传输距离(m)：")
+        self.label5.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.input_transmission_distance = QLineEdit()
-        self.input_transmission_distance.setText("100")
-        input_layout.addWidget(self.label5, 4, 0)
-        input_layout.addWidget(self.input_transmission_distance, 4, 1)
+        self.input_transmission_distance.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label5, 4, 0)
+        grid_layout.addWidget(self.input_transmission_distance, 4, 1)
 
-        result_group = QGroupBox("计算结果")
-        result_layout = QGridLayout(result_group)
+        self.label_distance = QLabel("请输入 测距机距离(m)：")
+        self.label_distance.setStyleSheet("font-size: 16px;")  # 增大标签字体
+        self.input_distance = QLineEdit()
+        self.input_distance.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label_distance, 5, 0)
+        grid_layout.addWidget(self.input_distance, 5, 1)
 
-        self.label6 = QLabel("理想半发散角 (rad):")
+        # 标签和输出框 (右侧)
+        self.label6 = QLabel("理想半发散角(rad)：")
+        self.label6.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.output_ideal_divergence = QLineEdit()
-        self.output_ideal_divergence.setReadOnly(True)
-        result_layout.addWidget(self.label6, 0, 0)
-        result_layout.addWidget(self.output_ideal_divergence, 0, 1)
+        self.output_ideal_divergence.setReadOnly(True)  # 只读
+        self.output_ideal_divergence.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label6, 0, 2)
+        grid_layout.addWidget(self.output_ideal_divergence, 0, 3)
 
-        self.label7 = QLabel("实际半发散角 (rad):")
+        self.label7 = QLabel("实际半发散角(rad)：")
+        self.label7.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.output_actual_divergence = QLineEdit()
-        self.output_actual_divergence.setReadOnly(True)
-        result_layout.addWidget(self.label7, 1, 0)
-        result_layout.addWidget(self.output_actual_divergence, 1, 1)
+        self.output_actual_divergence.setReadOnly(True)  # 只读
+        self.output_actual_divergence.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label7, 1, 2)
+        grid_layout.addWidget(self.output_actual_divergence, 1, 3)
 
-        self.label8 = QLabel("质量因子 M²:")
+        self.label8 = QLabel("质量因子 M²：")
+        self.label8.setStyleSheet("font-size: 16px;")  # 增大标签字体
         self.output_quality_factor = QLineEdit()
-        self.output_quality_factor.setReadOnly(True)
-        result_layout.addWidget(self.label8, 2, 0)
-        result_layout.addWidget(self.output_quality_factor, 2, 1)
+        self.output_quality_factor.setReadOnly(True)  # 只读
+        self.output_quality_factor.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label8, 2, 2)
+        grid_layout.addWidget(self.output_quality_factor, 2, 3)
 
-        grid_layout.addWidget(input_group, 0, 0)
-        grid_layout.addWidget(result_group, 0, 1)
+        # 激光相互夹角显示区域
+        self.label_angle_A_B = QLabel("A-B激光相互夹角：")
+        self.label_angle_A_B.setStyleSheet("font-size: 16px;")
+        self.output_angle_A_B = QLineEdit()
+        self.output_angle_A_B.setReadOnly(True)
+        self.output_angle_A_B.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label_angle_A_B, 3 ,2)
+        grid_layout.addWidget(self.output_angle_A_B, 3, 3)
+
+        self.label_angle_B_C = QLabel("B-C激光相互夹角：")
+        self.label_angle_B_C.setStyleSheet("font-size: 16px;")
+        self.output_angle_B_C = QLineEdit()
+        self.output_angle_B_C.setReadOnly(True)
+        self.output_angle_B_C.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label_angle_B_C, 4, 2)
+        grid_layout.addWidget(self.output_angle_B_C, 4, 3)
+
+        self.label_angle_C_A = QLabel("C-A激光相互夹角：")
+        self.label_angle_C_A.setStyleSheet("font-size: 16px;")
+        self.output_angle_C_A = QLineEdit()
+        self.output_angle_C_A.setReadOnly(True)
+        self.output_angle_C_A.setStyleSheet("font-size: 14px; height: 30px;")
+        grid_layout.addWidget(self.label_angle_C_A, 5, 2)
+        grid_layout.addWidget(self.output_angle_C_A, 5, 3)
+
+        # 通过增加一个垂直间距来确保夹角显示区域与底部计算按钮分开
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.layout.addItem(spacer)
+
+        # 将网格布局加入到主布局中
         self.layout.addLayout(grid_layout)
 
-        self.submit_button = QPushButton('🔢 开始计算')
+        # 提交按钮
+        self.submit_button = QPushButton('计算')
+        self.submit_button.setStyleSheet("font-size: 14px; height: 30px;")  # 增大按钮字体和高度
         self.submit_button.clicked.connect(self.calculate_parameters)
-        self.layout.addWidget(self.submit_button)
 
+        self.layout.addWidget(self.submit_button)
         self.setLayout(self.layout)
 
+        # 定时器每1秒更新一次
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_table)
+        self.timer.start(1000)  # 1000ms 即 1秒
+
+    def update_table(self):
+        # 模拟激光夹角的计算和时间
+        angle_A_B = 0.02  # 模拟计算值
+        angle_B_C = 0.03
+        angle_C_A = 0.04
+        current_time = QTime.currentTime().toString('hh:mm:ss')  # 获取当前时间
+
+        # 获取表格当前行数
+        row_position = self.table_widget.rowCount()
+
+        # 添加新行
+        self.table_widget.insertRow(row_position)
+
+        # 更新新行的数据
+        self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
+        self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
+        self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
+        self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
+
+        # 滚动到表格的最后一行
+        self.table_widget.scrollToBottom()
+    
+    #参数输入
     def calculate_parameters(self):
         try:
+             # 检查所有输入框是否为空
+            if not self.input_wavelength.text() or not self.input_aperture.text() or not self.input_spot_diameter.text() or not self.input_laser_power.text() or not self.input_transmission_distance.text() or not self.input_distance.text():
+                QMessageBox.warning(self, "提示", "请输入数据")
+                return  # 如果有任何输入框为空，停止执行
+            
             wavelength = float(self.input_wavelength.text().strip())
             aperture = float(self.input_aperture.text().strip())
             spot_diameter = float(self.input_spot_diameter.text().strip())
             laser_power = float(self.input_laser_power.text().strip())
             transmission_distance = float(self.input_transmission_distance.text().strip())
+            distance = float(self.input_distance.text().strip())  # 测距机距离
 
             if wavelength <= 0 or wavelength < 10 or wavelength > 1000:
                 raise ValueError("波长应大于 0 且在 10 到 1000 纳米之间")
@@ -1124,6 +1241,8 @@ class ParameterCalculationWindow(QDialog):
                 raise ValueError("出射口径应大于0 且小于100毫米")
             if transmission_distance <= 0:
                 raise ValueError("传输距离应大于 0")
+            if distance <= 0:
+                raise ValueError("测距机距离应大于 0")
 
             ideal_divergence = calculate_ideal_divergence(wavelength, aperture)
             actual_divergence = calculate_actual_divergence(spot_diameter, aperture, transmission_distance)

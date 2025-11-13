@@ -227,17 +227,17 @@ class main_Dialog(QWidget):
 
     def show_3d_image(self):
         if not hasattr(self, 'last_gray') or self.last_gray is None:
-            self.log("No image available for 3D reconstruction")
+            self.log("没有可用图像进行3D重构")
             return
 
         self.pbShow3D.setEnabled(False)
-        self.log("Starting 3D reconstruction in background...")
+        self.log("开始3D重构...")
 
         def worker(gray):
             try:
                 img3d = generate_3d_image(gray)
             except Exception as e:
-                self.log(f"3D generation error: {e}")
+                self.log(f"3D重构失败: {e}")
                 img3d = None
             self.show3d_finished.emit(img3d)
 
@@ -301,7 +301,7 @@ class main_Dialog(QWidget):
         self.list1 = []
         for x in range(minNumBuffers + 1):
             self.list1.append(self.data_stream.CreateBuffer(bufSize))
-        self.log(f"Created {len(self.list1)} data stream buffers")
+        self.log(f"已创建 {len(self.list1)} 个数据流缓冲区")
         return self.list1
 
     def show_cv_image(self, label, img):
@@ -316,11 +316,11 @@ class main_Dialog(QWidget):
     def GrabNewBuffer(self):
         buffer = self.data_stream.GetBuffer(1000)
         if buffer is None:
-            self.log("Failed to get buffer")
+            self.log("获取数据流缓冲区失败")
             return 0
 
         if buffer.IsIncomplete():
-            self.log("Received incomplete buffer")
+            self.log("接收到不完整的缓冲区")
             self.data_stream.QueueBuffer(buffer)
             return 0
 
@@ -338,17 +338,17 @@ class main_Dialog(QWidget):
         self.data_stream.QueueBuffer(buffer)
         self.counter += 1
         if self.counter % 10 == 0:
-            self.log(f"Processed {self.counter} frames")
+            self.log(f"已处理 {self.counter} 帧")
 
         IpxCameraGuiApiPy.PyShowImageOnDisplay(buffer.GetImage())
         return 0
 
     def threaded_function(self):
         self.stop = False
-        self.log("Starting image acquisition thread")
+        self.log("开始图像采集线程")
         while not self.stop:
             self.GrabNewBuffer()
-        self.log("Image acquisition thread stopped")
+        self.log("图像采集线程已停止")
 
     def auto_adjust(self):
         global g_autoAdjust

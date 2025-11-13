@@ -845,17 +845,17 @@ class main_Dialog(QWidget):
         self.pbAutoAdjust.setEnabled(False)
         settings_layout.addWidget(self.pbAutoAdjust, 0, 0, 1, 2)
 
-        settings_layout.addWidget(QLabel('Shutter Time (μs):'), 1, 0)
+        settings_layout.addWidget(QLabel('快门时间 (μs):'), 1, 0)
         self.shutter_input = QLineEdit()
-        self.shutter_input.setPlaceholderText('Enter shutter time')
+        self.shutter_input.setPlaceholderText('输入快门时间')
         settings_layout.addWidget(self.shutter_input, 1, 1)
 
-        settings_layout.addWidget(QLabel('Gain:'), 2, 0)
+        settings_layout.addWidget(QLabel('增益:'), 2, 0)
         self.gain_input = QLineEdit()
-        self.gain_input.setPlaceholderText('Enter gain')
+        self.gain_input.setPlaceholderText('输入增益')
         settings_layout.addWidget(self.gain_input, 2, 1)
 
-        self.pbConfirmSettings = create_function_btn('✅ Confirm Settings', self.confirm_settings)
+        self.pbConfirmSettings = create_function_btn('✅ 确认设置', self.confirm_settings)
         self.pbConfirmSettings.setEnabled(False)
         settings_layout.addWidget(self.pbConfirmSettings, 3, 0, 1, 2)
 

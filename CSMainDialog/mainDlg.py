@@ -1025,7 +1025,7 @@ class ParameterCalculationWindow(QDialog):
         super(ParameterCalculationWindow, self).__init__()
 
         self.setWindowTitle('激光参数计算器')
-        self.setMinimumSize(970, 600)
+        self.setMinimumSize(963, 760)
         self.layout = QVBoxLayout(self)  
 
         # 设置布局的边距（左、右、上、下），这里给左、右各添加20px的空白
@@ -1044,7 +1044,7 @@ class ParameterCalculationWindow(QDialog):
         # 加载图片
         top_layout = QHBoxLayout()
         self.image_label = QLabel(self)
-        pixmap = QPixmap("CSMainDialog\远场光斑计算模型\远场光斑计算模型.png")
+        pixmap = QPixmap("CSMainDialog\远场光斑发散模型\远场光斑发散模型.png")
         if pixmap.isNull():
             print("图片加载失败！")
         else:
@@ -1060,7 +1060,10 @@ class ParameterCalculationWindow(QDialog):
         self.table_widget.setRowCount(1)
         self.table_widget.setColumnCount(4)
         self.table_widget.setHorizontalHeaderLabels(["远-近夹角", "中-近夹角", "远-中夹角", "测试时间"])
-
+        self.table_widget.setColumnWidth(0, 100)  
+        self.table_widget.setColumnWidth(1, 100)  
+        self.table_widget.setColumnWidth(2, 100)  
+        self.table_widget.setColumnWidth(3, 100)  
 
         # 将表格添加到布局中
         top_layout.addWidget(self.table_widget)

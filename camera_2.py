@@ -210,7 +210,7 @@ class Camera2Widget(QWidget):
         # 左侧控制面板（宽度500）
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_panel.setFixedWidth(500)
+        left_panel.setFixedWidth(600)
         
         # 标题
         title_label = QLabel("长波红外相机 (RTSP)")

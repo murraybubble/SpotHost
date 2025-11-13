@@ -774,7 +774,7 @@ class main_Dialog(QWidget):
             btn.setObjectName("func_btn")
             btn.clicked.connect(func)
             btn.setEnabled(enabled)
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(40)
             return btn
 
         self.pbConnect = create_function_btn('🔗 连接', self.camConnect, True)
@@ -813,7 +813,7 @@ class main_Dialog(QWidget):
                                            ("框选识别","D")]):
             btn = QPushButton(name)
             btn.setCheckable(True); btn.setObjectName("func_btn")
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(40)
             self.btn_grp.addButton(btn, idx)
             control_layout.addWidget(btn)
             if key == "A": btn.setChecked(True)
@@ -1261,9 +1261,3 @@ class ParameterCalculationWindow(QDialog):
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
 
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = main_Dialog()
-    window.show()
-    sys.exit(app.exec_())

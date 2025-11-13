@@ -576,6 +576,7 @@ class main_Dialog(QWidget):
     def open_parameter_calculation_window(self):
         self.parameter_calculation_window = ParameterCalculationWindow()
         self.parameter_calculation_window.show()
+        self.log("参数计算器已打开")
 
     def switch_camera(self, index):
         current_widget = self.camera_stack.currentWidget()
@@ -1025,7 +1026,7 @@ class ParameterCalculationWindow(QDialog):
 
         self.setWindowTitle('激光参数计算器')
         self.setMinimumSize(970, 600)
-        self.layout = QVBoxLayout(self)
+        self.layout = QVBoxLayout(self)  
 
         # 设置布局的边距（左、右、上、下），这里给左、右各添加20px的空白
         self.layout.setContentsMargins(20, 5, 20, 20)  # 设置上下左右的边距
@@ -1193,6 +1194,7 @@ class ParameterCalculationWindow(QDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
         self.timer.start(1000)  # 1000ms 即 1秒
+
 
     def update_table(self):
         # 模拟激光夹角的计算和时间

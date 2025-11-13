@@ -454,10 +454,10 @@ class main_Dialog(QWidget):
         self.log("手动参数设置完成")
 
     def camConnect(self):
-        self.log("Attempting to connect to camera")
+        self.log("正在尝试连接相机...")
         self.deviceInfo = self.PyIpxSystem1.SelectCamera(self.winId())
         if self.deviceInfo is None:
-            self.log("Camera selection cancelled or failed")
+            self.log("相机选择已取消或失败")
             return
 
         self.pbConnect.setEnabled(0)
@@ -481,14 +481,14 @@ class main_Dialog(QWidget):
         self.data_stream = self.device.GetStreamByIndex(0)
         self.gPars = self.device.GetCameraParameters()
 
-        self.log(f"Connected to camera: {self.deviceInfo.GetModel()} ({self.deviceInfo.GetSerialNumber()})")
+        self.log(f"已连接相机：{self.deviceInfo.GetModel()} ({self.deviceInfo.GetSerialNumber()})")
 
     def camAction(self):
-        self.log("Performing camera action")
+        self.log("正在执行相机操作...")
         IpxCameraGuiApiPy.PyActionCamera(self.winId())
 
     def camDisconnect(self):
-        self.log("Disconnecting from camera")
+        self.log("正在断开相机连接...")
         self.pbDisconnect.setEnabled(0)
         if hasattr(self, 'device') and self.device.IsValid():
             self.camStop()
@@ -514,10 +514,10 @@ class main_Dialog(QWidget):
         self.pbCropImage.setEnabled(0)
         self.pbSaveSettings.setEnabled(0)
         self.pbLoadSettings.setEnabled(0)
-        self.log("Camera disconnected")
+        self.log("相机已断开连接")
 
     def camPlay(self):
-        self.log("Starting camera playback")
+        self.log("开始相机回放")
         self.CreateDataStreamBuffers()
         IpxCameraGuiApiPy.PyResetDisplay()
         self.pbPlay.setEnabled(0)
@@ -528,37 +528,37 @@ class main_Dialog(QWidget):
         self.thread.start()
         self.pbStop.setEnabled(1)
         self.pbCropImage.setEnabled(0)
-        self.log("Camera playback started")
+        self.log("相机回放已开始")
 
     def camStop(self):
-        self.log("Stopping camera playback")
+        self.log("停止相机回放")
         self.pbStop.setEnabled(0)
         self.stop = True
         if hasattr(self, 'thread') and self.thread.is_alive():
             self.thread.join()
         if hasattr(self, 'gPars'):
-            self.gPars.ExecuteCommand("AcquisitionStop")
+            self.gPars.ExecuteCommand("停止采集")
         if hasattr(self, 'data_stream'):
             self.data_stream.StopAcquisition(1)
         if hasattr(self, 'gPars'):
             self.gPars.SetIntegerValue("TLParamsLocked", 0)
         self.pbPlay.setEnabled(1)
         self.pbCropImage.setEnabled(1)
-        self.log("Camera playback stopped")
+        self.log("相机回放已停止")
 
     def camTree(self):
-        self.log("Opening GenICam parameter tree")
+        self.log("正在打开相机参数树")
         if self.parView:
             IpxCameraGuiApiPy.PyDestroyGenParamTreeView(self.parView)
         self.parView = IpxCameraGuiApiPy.PyCreateGenParamTreeViewForArray(self.gPars, self.winId())
 
     def _on_show3d_finished(self, proj3d):
         if proj3d is None:
-            self.log("3D reconstruction failed")
+            self.log("3D重构失败")
         else:
             self.last_3d_image = proj3d
             self.show_cv_image(self.label4, proj3d)
-            self.log("3D reconstruction displayed (background)")
+            self.log("3D重构完成")
         self.pbShow3D.setEnabled(True)
 
     def _update_display(self, imgs):
@@ -777,16 +777,16 @@ class main_Dialog(QWidget):
             btn.setFixedHeight(40)
             return btn
 
-        self.pbConnect = create_function_btn('🔗 连', self.camConnect, True)
-        self.pbDisconnect = create_function_btn('🔌 Disconnect', self.camDisconnect, False)
-        self.pbPlay = create_function_btn('▶ Play', self.camPlay, False)
-        self.pbStop = create_function_btn('⏹ Stop', self.camStop, False)
-        self.pbTree = create_function_btn('🌳 GenICam Tree', self.camTree, False)
-        self.pbAction = create_function_btn('⚡ Action', self.camAction, True)
-        self.pbSaveLog = create_function_btn('💾 Save Log', self.save_log, True)
+        self.pbConnect = create_function_btn('🔗 连接', self.camConnect, True)
+        self.pbDisconnect = create_function_btn('🔌 断开连接', self.camDisconnect, False)
+        self.pbPlay = create_function_btn('▶ 开始', self.camPlay, False)
+        self.pbStop = create_function_btn('⏹ 停止', self.camStop, False)
+        self.pbTree = create_function_btn('🌳 GenICam 树', self.camTree, False)
+        self.pbAction = create_function_btn('⚡ 执行动作', self.camAction, True)
+        self.pbSaveLog = create_function_btn('💾 保存日志', self.save_log, True)
         self.pbCropImage = create_function_btn('✂️ 裁切图像', self.crop_image, False)
-        self.pbShow3D = create_function_btn('📊 Show 3D', self.show_3d_image, True)
-        self.pbSaveAll = create_function_btn('💿 Save All', self.save_all, True)
+        self.pbShow3D = create_function_btn('📊 显示 3D', self.show_3d_image, True)
+        self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
 

@@ -8,7 +8,7 @@ from PyQt5.QtCore import *
 import numpy as np
 import cv2 as cv
 from threading import Thread
-
+import spot_detection
 sys.path.append(os.path.dirname(__file__))  # 添加当前文件夹到模块搜索路径
 from spot_detection import preprocess_image_cv, detect_and_draw_spots, energy_distribution
 from reconstruction3d import generate_3d_image
@@ -224,6 +224,7 @@ class main_Dialog(QWidget):
             self.log("已更新裁切后的图像及处理结果")
         except Exception as e:
             self.log(f"更新裁切图像显示时出错: {e}")
+    
 
     def show_3d_image(self):
         if not hasattr(self, 'last_gray') or self.last_gray is None:

@@ -349,7 +349,7 @@ class main_Dialog(QWidget):
         while not self.stop:
             self.GrabNewBuffer()
         self.log("图像采集线程已停止")
-
+    
     def auto_adjust(self):
         global g_autoAdjust
         if not hasattr(self, 'device') or not self.device.IsValid():
@@ -515,7 +515,7 @@ class main_Dialog(QWidget):
         self.pbSaveSettings.setEnabled(0)
         self.pbLoadSettings.setEnabled(0)
         self.log("相机已断开连接")
-
+ 
     def camPlay(self):
         self.log("开始相机回放")
         self.CreateDataStreamBuffers()
@@ -578,6 +578,7 @@ class main_Dialog(QWidget):
         self.parameter_calculation_window.show()
         self.log("参数计算器已打开")
 
+    
     def switch_camera(self, index):
         current_widget = self.camera_stack.currentWidget()
         if hasattr(current_widget, 'stop_camera'):
@@ -789,7 +790,7 @@ class main_Dialog(QWidget):
         self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
-        # self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
+        #self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
 
 
 
@@ -804,7 +805,7 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbShow3D)
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
-        control_layout.addWidget(self.pbImport)
+        #control_layout.addWidget(self.pbImport)
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)
         for idx, (name, key) in enumerate([("标准算法","A"),
@@ -941,6 +942,7 @@ class main_Dialog(QWidget):
         self.setMinimumSize(1400, 900)
         self.refresh_ports()
 
+    
     def initInfoTable(self):
         self.infoTable.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.infoTable.setRowCount(5)

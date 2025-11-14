@@ -15,8 +15,7 @@ class DetailGainDialog(QDialog):
     def __init__(self, parent=None, current_value=0):
         super().__init__(parent)
         self.setWindowTitle("细节增益调节 (0-255)")
-        self.setFixedSize(300, 150)
-        
+        self.setFixedSize(300, 150) 
         layout = QVBoxLayout(self)
         
         # 滑块调节
@@ -343,22 +342,6 @@ class Camera2Widget(QWidget):
         self.param_group.setLayout(param_layout)
         left_layout.addWidget(self.param_group)
         
-        # 日志窗口（新增：按需求添加）
-        log_group = QGroupBox("操作日志")
-        log_layout = QVBoxLayout()
-        
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setLineWrapMode(QTextEdit.NoWrap)
-        log_layout.addWidget(self.log_text)
-        
-        self.clear_log_btn = QPushButton("清空日志")
-        self.clear_log_btn.setMinimumHeight(30)
-        self.clear_log_btn.clicked.connect(self.clear_log)
-        log_layout.addWidget(self.clear_log_btn)
-        
-        log_group.setLayout(log_layout)
-        left_layout.addWidget(log_group)
         
         # 填充剩余空间
         left_layout.addStretch()
@@ -466,30 +449,11 @@ class Camera2Widget(QWidget):
                 self.update_status(f"串口[{selected_port}]连接失败", level="error")
 
     # ----------------------
-    # 新增：日志相关方法
-    # ----------------------
-    def add_log(self, message, level="info"):
-        """添加带时间戳和颜色的日志"""
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # 日志颜色：info(黑)、warn(橙)、error(红)
-        color_map = {"info": "#000000", "warn": "#FFA500", "error": "#FF0000"}
-        color = color_map.get(level, "#000000")
-        log_line = f'<span style="color:{color}">[{timestamp}] [{level.upper()}] {message}</span><br>'
-        self.log_text.insertHtml(log_line)
-        self.log_text.moveCursor(QTextCursor.End)  # 自动滚动到底部
-
-    def clear_log(self):
-        """清空日志窗口"""
-        self.log_text.clear()
-        self.add_log("日志已清空", level="info")
-
-    # ----------------------
     # 核心功能方法（修改update_status）
     # ----------------------
     def update_status(self, message, level="info"):
         """同时更新状态标签和日志（解决原报错核心）"""
         self.status_label.setText(message)  # 状态标签显示最新信息
-        self.add_log(message, level)  # 日志记录历史信息
         print(f"[状态更新] {message}")
 
     def start_or_resume_camera(self):

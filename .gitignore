@@ -15,3 +15,5 @@ build/
 dist/
 
 *.spec
+
+Saved_Images_*

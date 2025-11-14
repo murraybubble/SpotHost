@@ -20,8 +20,8 @@ from camera_control import (
 )
 from image_cropper import CropDialog
 from spot_algorithms import detect_spots
-from camera_2 import Camera2Widget
-from camera_3 import Camera3Widget
+from Cam2.camera_2 import Camera2Widget
+from Cam3.camera_3 import Camera3Widget
 
 if platform.system() == 'Windows':
     sys.path.append(os.environ['IPX_CAMSDK_ROOT'] + '/bin/win64_x64/')

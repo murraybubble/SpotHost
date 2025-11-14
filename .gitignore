@@ -10,3 +10,8 @@ __pycache__/
 # 忽略 Python 3.8+ 生成的调试字节码文件
 *.pyi
 
+build/
+
+dist/
+
+*.spec

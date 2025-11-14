@@ -789,7 +789,7 @@ class main_Dialog(QWidget):
         self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
-        self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
+        # self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
 
 
 

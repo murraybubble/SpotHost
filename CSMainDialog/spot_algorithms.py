@@ -43,7 +43,8 @@ def _algo_A(img, max_spots=3):
     for (y, x), r in zip(coords, radii):
         if det >= max_spots: break
         r = int(r)
-        if r < 3: continue
+        if r < 3 or r > 3000:          # 半径异常直接跳过
+            continue
         mask = np.zeros_like(opening, dtype=np.uint8)
         cv2.circle(mask, (x, y), r, 1, -1)
         overlap = np.logical_and(used, mask.astype(bool)).sum() / (np.pi * r * r + 1e-6)

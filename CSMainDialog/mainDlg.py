@@ -67,6 +67,12 @@ class main_Dialog(QWidget):
         self.image_signal.connect(self._update_display)
         self.cropped_image_signal.connect(self._process_cropped_image)
         self.range_result_signal.connect(self.update_range_display)
+        # 录像相关
+        self.recording = False           # 是否正在录像
+        self.video_writer = None         # cv2.VideoWriter 对象
+        self.record_start_time = None    # 开始录像的时间字符串
+        self.last_video_path = None      # 上一次录像文件路径
+
 
     def closeEvent(self, event):
         """关闭事件，确保所有相机线程都停止"""

@@ -50,7 +50,12 @@ class main_Dialog(QWidget):
         self.counter = 0
         self.stop = False
         self.parView = None
-        self.algo_type = "A" 
+        self.algo_type = "A"
+
+        # 外部图片模式相关
+        self.external_mode = False           # 当前是否处于外部图片模式
+        self.external_image = None           # 最近一次导入的图片
+        self.was_playing_before_import = False  # 进入图片模式前，相机是否在播放
 
         # 初始化相机系统
         self.PyIpxSystem1 = IpxCameraGuiApiPy.PyIpxSystem()
@@ -224,7 +229,97 @@ class main_Dialog(QWidget):
             self.log("已更新裁切后的图像及处理结果")
         except Exception as e:
             self.log(f"更新裁切图像显示时出错: {e}")
-    
+
+    # =========== 外部图片导入模式 ===========
+
+    def toggle_import_mode(self):
+        """
+        点击“🖼 导入图片”按钮：
+        - 若当前不在图片模式：停止相机、选择图片、运行光斑检测和热度图，进入图片模式
+        - 若当前在图片模式：退出图片模式；如之前相机在播放，则自动恢复
+        """
+        if not self.external_mode:
+            # 进入外部图片模式
+            # 记录进入前相机是否在播放
+            self.was_playing_before_import = hasattr(self, 'thread') and getattr(self, 'thread', None) and self.thread.is_alive()
+
+            if self.was_playing_before_import:
+                self.log("进入图片模式前，先停止相机回放")
+                self.camStop()
+
+            options = QFileDialog.Options()
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "选择外部图片",
+                "",
+                "图像文件 (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;所有文件 (*)",
+                options=options
+            )
+
+            if not file_path:
+                self.log("取消选择外部图片")
+                # 如果之前在播放且被我们停掉了，这里是否恢复？
+                if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
+                    self.camPlay()
+                self.was_playing_before_import = False
+                return
+
+            img = cv.imread(file_path, cv.IMREAD_COLOR)
+            if img is None:
+                QMessageBox.critical(self, "错误", "无法读取该图片，请检查文件格式")
+                self.log(f"读取图片失败：{file_path}")
+                # 同上：恢复播放
+                if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
+                    self.camPlay()
+                self.was_playing_before_import = False
+                return
+
+            self.log(f"已导入图片：{file_path}")
+            self.external_image = img.copy()
+            self._process_external_image(img)
+
+            self.external_mode = True
+            self.pbImport.setText("🖼 退出图片模式")
+            self.log("进入外部图片模式：当前显示为导入图片和对应检测结果")
+        else:
+            # 退出外部图片模式
+            self.external_mode = False
+            self.external_image = None
+            self.pbImport.setText("🖼 导入图片")
+            self.log("已退出外部图片模式")
+
+            # 恢复相机回放（如果进入前是播放状态，并且当前有相机）
+            if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
+                self.log("恢复进入图片模式前的相机回放状态")
+                self.camPlay()
+
+            self.was_playing_before_import = False
+
+    def _process_external_image(self, img_color):
+        """
+        对外部导入的图片执行：预处理 -> 光斑检测 -> 能量分布
+        显示到四个窗格中的前3个；第4个由“显示3D”按钮触发。
+        """
+        try:
+            # 保持与实时相机同样的处理流程
+            gray, blur = preprocess_image_cv(img_color)
+            spots_output = detect_spots(img_color, self.algo_type)
+            heatmap = energy_distribution(gray)
+
+            # 更新状态，供3D重构等使用
+            self.last_original_image = img_color.copy()
+            self.last_gray = gray
+
+            # 显示
+            self.show_cv_image(self.label1, img_color)
+            self.show_cv_image(self.label2, spots_output)
+            self.show_cv_image(self.label3, heatmap)
+            self.log("外部图片处理完成：已更新原图、光斑识别、能量分布显示")
+        except Exception as e:
+            self.log(f"处理外部图片时出错: {e}")
+            QMessageBox.critical(self, "错误", f"处理外部图片时出错:\n{e}")
+
+    # =========== 3D 重构 ===========
 
     def show_3d_image(self):
         if not hasattr(self, 'last_gray') or self.last_gray is None:
@@ -315,6 +410,10 @@ class main_Dialog(QWidget):
         label.setPixmap(pixmap)
 
     def GrabNewBuffer(self):
+        # 若处于外部图片模式，则不再从相机取帧，避免状态混乱
+        if self.external_mode:
+            return 0
+
         buffer = self.data_stream.GetBuffer(1000)
         if buffer is None:
             self.log("获取数据流缓冲区失败")
@@ -350,7 +449,7 @@ class main_Dialog(QWidget):
         while not self.stop:
             self.GrabNewBuffer()
         self.log("图像采集线程已停止")
-    
+
     def auto_adjust(self):
         global g_autoAdjust
         if not hasattr(self, 'device') or not self.device.IsValid():
@@ -455,6 +554,11 @@ class main_Dialog(QWidget):
         self.log("手动参数设置完成")
 
     def camConnect(self):
+        if self.external_mode:
+            self.log("当前处于外部图片模式，请先退出图片模式再连接相机")
+            QMessageBox.warning(self, "提示", "请先退出图片模式再连接相机")
+            return
+
         self.log("正在尝试连接相机...")
         self.deviceInfo = self.PyIpxSystem1.SelectCamera(self.winId())
         if self.deviceInfo is None:
@@ -516,8 +620,13 @@ class main_Dialog(QWidget):
         self.pbSaveSettings.setEnabled(0)
         self.pbLoadSettings.setEnabled(0)
         self.log("相机已断开连接")
- 
+
     def camPlay(self):
+        if self.external_mode:
+            self.log("当前处于外部图片模式，禁止开启相机回放，请先退出图片模式")
+            QMessageBox.information(self, "提示", "请先退出图片模式，再开始相机回放")
+            return
+
         self.log("开始相机回放")
         self.CreateDataStreamBuffers()
         IpxCameraGuiApiPy.PyResetDisplay()
@@ -538,7 +647,15 @@ class main_Dialog(QWidget):
         if hasattr(self, 'thread') and self.thread.is_alive():
             self.thread.join()
         if hasattr(self, 'gPars'):
-            self.gPars.ExecuteCommand("停止采集")
+            # 原代码里是 "停止采集"，这里保持不变（如果是中文命令，SDK 内部映射）
+            try:
+                self.gPars.ExecuteCommand("停止采集")
+            except Exception:
+                # 兼容部分SDK使用 "AcquisitionStop"
+                try:
+                    self.gPars.ExecuteCommand("AcquisitionStop")
+                except Exception:
+                    pass
         if hasattr(self, 'data_stream'):
             self.data_stream.StopAcquisition(1)
         if hasattr(self, 'gPars'):
@@ -579,7 +696,6 @@ class main_Dialog(QWidget):
         self.parameter_calculation_window.show()
         self.log("参数计算器已打开")
 
-    
     def switch_camera(self, index):
         current_widget = self.camera_stack.currentWidget()
         if hasattr(current_widget, 'stop_camera'):
@@ -791,9 +907,8 @@ class main_Dialog(QWidget):
         self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
-        #self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
-
-
+        # 新增：导入图片按钮
+        self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
 
         control_layout.addWidget(self.pbConnect)
         control_layout.addWidget(self.pbDisconnect)
@@ -806,19 +921,21 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbShow3D)
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
-        #control_layout.addWidget(self.pbImport)
+        control_layout.addWidget(self.pbImport)   # 放在参数计算按钮旁边
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)
-        for idx, (name, key) in enumerate([("标准算法","A"),
-                                           ("双光斑算法","B"),
-                                           ("单光斑去噪","C"),
-                                           ("框选识别","D")]):
+        for idx, (name, key) in enumerate([("标准算法", "A"),
+                                           ("双光斑算法", "B"),
+                                           ("单光斑去噪", "C"),
+                                           ("框选识别", "D")]):
             btn = QPushButton(name)
-            btn.setCheckable(True); btn.setObjectName("func_btn")
+            btn.setCheckable(True)
+            btn.setObjectName("func_btn")
             btn.setFixedHeight(40)
             self.btn_grp.addButton(btn, idx)
             control_layout.addWidget(btn)
-            if key == "A": btn.setChecked(True)
+            if key == "A":
+                btn.setChecked(True)
         self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
 
         control_layout.addStretch()
@@ -943,7 +1060,6 @@ class main_Dialog(QWidget):
         self.setMinimumSize(1400, 900)
         self.refresh_ports()
 
-    
     def initInfoTable(self):
         self.infoTable.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.infoTable.setRowCount(5)
@@ -1025,5 +1141,3 @@ class main_Dialog(QWidget):
         range_layout.addWidget(self.range_result_table)
 
         return range_panel
-
-

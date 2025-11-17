@@ -13,18 +13,15 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QFileDialog, QSizePolicy, QSpacerItem)
 
 current_script_path = os.path.abspath(__file__)
-# 获取当前脚本所在目录（Cam2）的父目录（即外层目录 spot-host）
 parent_dir = os.path.dirname(os.path.dirname(current_script_path))
-# 将外层目录添加到Python的搜索路径
 sys.path.append(parent_dir)
 
 from cam2_3_serialControl import CameraController_1
 
-# 导入MainDlg.py中使用的自定义库
 sys.path.append(os.path.dirname(__file__))
 from CSMainDialog.spot_detection import preprocess_image_cv, detect_and_draw_spots, energy_distribution
 from CSMainDialog.reconstruction3d import generate_3d_image
-from CSMainDialog.parameter_calculation import calculate_ideal_divergence, calculate_actual_divergence, calculate_quality_factor
+from CSMainDialog.parameter_calculation import ParameterCalculationWindow
 from CSMainDialog.image_cropper import CropDialog
 from CSMainDialog.spot_algorithms import detect_spots
 
@@ -36,23 +33,19 @@ class DetailGainDialog(QDialog):
         self.setFixedSize(300, 150) 
         layout = QVBoxLayout(self)
         
-        # 滑块调节
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 255)
         self.slider.setValue(current_value)
         self.slider.setTickInterval(10)
         self.slider.setTickPosition(QSlider.TicksBelow)
         
-        # 数值显示与输入
         self.value_spin = QSpinBox()
         self.value_spin.setRange(0, 255)
         self.value_spin.setValue(current_value)
         
-        # 联动
         self.slider.valueChanged.connect(self.value_spin.setValue)
         self.value_spin.valueChanged.connect(self.slider.setValue)
         
-        # 布局
         slider_layout = QHBoxLayout()
         slider_layout.addWidget(QLabel("增益值:"))
         slider_layout.addWidget(self.value_spin)
@@ -60,7 +53,6 @@ class DetailGainDialog(QDialog):
         layout.addLayout(slider_layout)
         layout.addWidget(self.slider)
         
-        # 确认按钮
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -69,7 +61,6 @@ class DetailGainDialog(QDialog):
         self.setLayout(layout)
     
     def get_value(self):
-        """获取当前设置的增益值"""
         return self.value_spin.value()
 
 
@@ -82,11 +73,11 @@ class Camera2Thread(QThread):
     def __init__(self, rtsp_url):
         super().__init__()
         self.rtsp_url = rtsp_url
-        self.running = False  # 线程是否处于运行状态（总开关）
-        self.paused = False   # 是否暂停
+        self.running = False
+        self.paused = False
         self.cap = None
         self.thread_tag = id(self)
-        self.last_frame = None  # 保存最后一帧用于暂停显示
+        self.last_frame = None
         print(f"[Camera2Thread] 初始化线程 (RTSP: {self.rtsp_url}, 标识: {self.thread_tag})")
 
     def run(self):  
@@ -95,13 +86,12 @@ class Camera2Thread(QThread):
         self.status_signal.emit(f"正在连接长波相机: {self.rtsp_url}")
         
         try:
-            # 初始化相机资源（仅首次启动时初始化）
             if not self.cap:
                 self.cap = cv2.VideoCapture(self.rtsp_url)
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 self.cap.set(cv2.CAP_PROP_FPS, 15)
                 if hasattr(cv2, 'CAP_PROP_TIMEOUT'):
-                    self.cap.set(cv2.CAP_PROP_TIMEOUT, 500)  # 缩短超时，提升响应速度
+                    self.cap.set(cv2.CAP_PROP_TIMEOUT, 500)
             
             if not self.cap.isOpened():
                 error_msg = "无法连接长波相机（RTSP流打开失败）"
@@ -110,7 +100,6 @@ class Camera2Thread(QThread):
                 self.running = False
                 return
                 
-            # 首次连接时发送视频参数
             params = {
                 "width": int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 "height": int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
@@ -121,24 +110,19 @@ class Camera2Thread(QThread):
             print(f"[Camera2Thread] 视频参数: {params} (标识: {self.thread_tag})")
             self.status_signal.emit("长波相机连接成功")
             
-            # 核心循环：支持启动/暂停切换
             while self.running:
-                # 暂停状态时阻塞，不读取帧
                 while self.paused and self.running:
-                    self.msleep(100)  # 降低CPU占用
+                    self.msleep(100)
                     continue
                 
-                # 若线程已被终止，退出循环
                 if not self.running:
                     break
                 
-                # 读取最新帧
                 ret, frame = self.cap.read()
                 if not ret:
                     error_msg = "长波相机读取帧失败，尝试重连..."
                     self.status_signal.emit(error_msg)
                     print(f"[Camera2Thread] 错误: {error_msg} (标识: {self.thread_tag})")
-                    # 重连逻辑
                     self.cap.release()
                     self.cap = cv2.VideoCapture(self.rtsp_url)
                     if not self.cap.isOpened():
@@ -147,7 +131,6 @@ class Camera2Thread(QThread):
                         break
                     continue
                 
-                # 保存最后一帧并发送给UI
                 self.last_frame = frame
                 self.frame_signal.emit(frame)
                 
@@ -156,7 +139,6 @@ class Camera2Thread(QThread):
             self.status_signal.emit(error_msg)
             print(f"[Camera2Thread] 异常: {error_msg} (标识: {self.thread_tag})")
         finally:
-            # 线程彻底终止时释放资源
             self.running = False
             self.paused = False
             if self.cap and self.cap.isOpened():
@@ -166,21 +148,16 @@ class Camera2Thread(QThread):
             print(f"[Camera2Thread] 线程运行结束 (标识: {self.thread_tag})")
 
     def pause(self):
-        """暂停播放（保留资源和最后一帧）"""
         if self.paused:
-            print(f"[Camera2Thread] 已处于暂停状态 (标识: {self.thread_tag})")
             return
         self.paused = True
         self.status_signal.emit("视频流已暂停")
         print(f"[Camera2Thread] 线程暂停 (标识: {self.thread_tag})")
 
     def resume(self):
-        """恢复播放（清理旧帧，获取最新画面）"""
         if not self.paused or not self.running:
-            print(f"[Camera2Thread] 无法恢复（未暂停或线程未运行） (标识: {self.thread_tag})")
             return
         self.paused = False
-        # 清理缓冲区旧帧，确保显示最新画面
         if self.cap:
             for _ in range(2):
                 self.cap.read()
@@ -188,254 +165,12 @@ class Camera2Thread(QThread):
         print(f"[Camera2Thread] 线程恢复 (标识: {self.thread_tag})")
 
     def stop_thread(self):
-        """彻底停止线程（窗口关闭时调用）"""
         print(f"[Camera2Thread] 开始彻底停止线程 (标识: {self.thread_tag})")
         self.running = False
         self.paused = False
         if self.isRunning():
             self.wait(2000)
         print(f"[Camera2Thread] 线程彻底停止 (标识: {self.thread_tag})")
-
-
-class ParameterCalculationWindow(QDialog):
-    def __init__(self):
-        super(ParameterCalculationWindow, self).__init__()
-
-        self.setWindowTitle('激光参数计算器')
-        self.setMinimumSize(963, 760)
-        self.layout = QVBoxLayout(self)  
-
-        # 设置布局的边距（左、右、上、下），这里给左、右各添加20px的空白
-        self.layout.setContentsMargins(20, 5, 20, 20)  # 设置上下左右的边距
-        self.layout.setSpacing(15)  # 设置控件之间的间距
-
-        # 添加标题
-        self.title_label = QLabel("激光参数计算器")
-        self.title_label.setAlignment(Qt.AlignCenter)  # 设置标题居中对齐
-        self.title_label.setStyleSheet("font-size: 25px; font-weight: bold; color: #2E3A59;")
-        self.layout.addWidget(self.title_label)
-
-        # 创建一个水平布局来放图片
-        top_layout = QHBoxLayout()
-
-        # 加载图片
-        top_layout = QHBoxLayout()
-        self.image_label = QLabel(self)
-        pixmap = QPixmap("CSMainDialog\远场光斑发散模型\远场光斑发散模型.png")
-        if pixmap.isNull():
-            print("图片加载失败！")
-        else:
-            print("图片加载成功！")
-        self.image_label.setPixmap(pixmap.scaled(500, 400, aspectRatioMode=Qt.KeepAspectRatio))
-        self.image_label.setStyleSheet("border: 3px solid black;")  # 设置3px粗的黑色边框
-
-        # 强制图片左对齐
-        top_layout.addWidget(self.image_label)
-
-        # 创建表格显示区域
-        self.table_widget = QTableWidget(self)
-        self.table_widget.setRowCount(1)
-        self.table_widget.setColumnCount(4)
-        self.table_widget.setHorizontalHeaderLabels(["远-近夹角", "中-近夹角", "远-中夹角", "测试时间"])
-        self.table_widget.setColumnWidth(0, 100)  
-        self.table_widget.setColumnWidth(1, 100)  
-        self.table_widget.setColumnWidth(2, 100)  
-        self.table_widget.setColumnWidth(3, 100)  
-
-        # 将表格添加到布局中
-        top_layout.addWidget(self.table_widget)
-
-        # 设置布局的对齐方式，图片和表格左右对齐
-        top_layout.setStretch(0, 1)  # 让图片占更多的空间
-        top_layout.setStretch(1, 2)  # 让表格占更多空间
-
-
-        # 设置 `QHBoxLayout` 左对齐
-        top_layout.setAlignment(Qt.AlignLeft)
-
-        # 创建一个垂直布局，将标题和图片放在一起
-        header_layout = QVBoxLayout()
-        header_layout.addLayout(top_layout)  # 添加图片布局
-        self.layout.addLayout(header_layout)
-
-        # 创建一个网格布局
-        grid_layout = QGridLayout()
-        grid_layout.setHorizontalSpacing(20)
-        grid_layout.setVerticalSpacing(15)
-
-        self.label1 = QLabel("请输入 波长(nm)：")
-        self.label1.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_wavelength = QLineEdit()
-        self.input_wavelength.setStyleSheet("font-size: 14px; height: 30px;")  # 设置输入框字体和高度
-        grid_layout.addWidget(self.label1, 0, 0)
-        grid_layout.addWidget(self.input_wavelength, 0, 1)
-
-        self.label2 = QLabel("请输入 出射口径(mm)：")
-        self.label2.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_aperture = QLineEdit()
-        self.input_aperture.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label2, 1, 0)
-        grid_layout.addWidget(self.input_aperture, 1, 1)
-
-        self.label3 = QLabel("请输入 远场光斑直径(mm)：")
-        self.label3.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_spot_diameter = QLineEdit()
-        self.input_spot_diameter.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label3, 2, 0)
-        grid_layout.addWidget(self.input_spot_diameter, 2, 1)
-
-        self.label4 = QLabel("请输入 激光功率(W)：")
-        self.label4.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_laser_power = QLineEdit()
-        self.input_laser_power.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label4, 3, 0)
-        grid_layout.addWidget(self.input_laser_power, 3, 1)
-
-        self.label5 = QLabel("请输入 传输距离(m)：")
-        self.label5.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_transmission_distance = QLineEdit()
-        self.input_transmission_distance.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label5, 4, 0)
-        grid_layout.addWidget(self.input_transmission_distance, 4, 1)
-
-        self.label_distance = QLabel("请输入 测距机距离(m)：")
-        self.label_distance.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.input_distance = QLineEdit()
-        self.input_distance.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_distance, 5, 0)
-        grid_layout.addWidget(self.input_distance, 5, 1)
-
-        # 标签和输出框 (右侧)
-        self.label6 = QLabel("理想半发散角(rad)：")
-        self.label6.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.output_ideal_divergence = QLineEdit()
-        self.output_ideal_divergence.setReadOnly(True)  # 只读
-        self.output_ideal_divergence.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label6, 0, 2)
-        grid_layout.addWidget(self.output_ideal_divergence, 0, 3)
-
-        self.label7 = QLabel("实际半发散角(rad)：")
-        self.label7.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.output_actual_divergence = QLineEdit()
-        self.output_actual_divergence.setReadOnly(True)  # 只读
-        self.output_actual_divergence.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label7, 1, 2)
-        grid_layout.addWidget(self.output_actual_divergence, 1, 3)
-
-        self.label8 = QLabel("质量因子 M²：")
-        self.label8.setStyleSheet("font-size: 16px;")  # 增大标签字体
-        self.output_quality_factor = QLineEdit()
-        self.output_quality_factor.setReadOnly(True)  # 只读
-        self.output_quality_factor.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label8, 2, 2)
-        grid_layout.addWidget(self.output_quality_factor, 2, 3)
-
-        # 激光相互夹角显示区域
-        self.label_angle_A_B = QLabel("A-B激光相互夹角：")
-        self.label_angle_A_B.setStyleSheet("font-size: 16px;")
-        self.output_angle_A_B = QLineEdit()
-        self.output_angle_A_B.setReadOnly(True)
-        self.output_angle_A_B.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_A_B, 3 ,2)
-        grid_layout.addWidget(self.output_angle_A_B, 3, 3)
-
-        self.label_angle_B_C = QLabel("B-C激光相互夹角：")
-        self.label_angle_B_C.setStyleSheet("font-size: 16px;")
-        self.output_angle_B_C = QLineEdit()
-        self.output_angle_B_C.setReadOnly(True)
-        self.output_angle_B_C.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_B_C, 4, 2)
-        grid_layout.addWidget(self.output_angle_B_C, 4, 3)
-
-        self.label_angle_C_A = QLabel("C-A激光相互夹角：")
-        self.label_angle_C_A.setStyleSheet("font-size: 16px;")
-        self.output_angle_C_A = QLineEdit()
-        self.output_angle_C_A.setReadOnly(True)
-        self.output_angle_C_A.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_C_A, 5, 2)
-        grid_layout.addWidget(self.output_angle_C_A, 5, 3)
-
-        # 通过增加一个垂直间距来确保夹角显示区域与底部计算按钮分开
-        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.layout.addItem(spacer)
-
-        # 将网格布局加入到主布局中
-        self.layout.addLayout(grid_layout)
-
-        # 提交按钮
-        self.submit_button = QPushButton('计算')
-        self.submit_button.setStyleSheet("font-size: 14px; height: 30px;")  # 增大按钮字体和高度
-        self.submit_button.clicked.connect(self.calculate_parameters)
-
-        self.layout.addWidget(self.submit_button)
-        self.setLayout(self.layout)
-
-        # 定时器每1秒更新一次
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_table)
-        self.timer.start(1000)  # 1000ms 即 1秒
-
-
-    def update_table(self):
-        # 模拟激光夹角的计算和时间
-        angle_A_B = 0.02  # 模拟计算值
-        angle_B_C = 0.03
-        angle_C_A = 0.04
-        current_time = QTime.currentTime().toString('hh:mm:ss')  # 获取当前时间
-
-        # 获取表格当前行数
-        row_position = self.table_widget.rowCount()
-
-        # 添加新行
-        self.table_widget.insertRow(row_position)
-
-        # 更新新行的数据
-        self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
-        self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
-        self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
-        self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
-
-        # 滚动到表格的最后一行
-        self.table_widget.scrollToBottom()
-    
-    #参数输入
-    def calculate_parameters(self):
-        try:
-             # 检查所有输入框是否为空
-            if not self.input_wavelength.text() or not self.input_aperture.text() or not self.input_spot_diameter.text() or not self.input_laser_power.text() or not self.input_transmission_distance.text() or not self.input_distance.text():
-                QMessageBox.warning(self, "提示", "请输入数据")
-                return  # 如果有任何输入框为空，停止执行
-            
-            wavelength = float(self.input_wavelength.text().strip())
-            aperture = float(self.input_aperture.text().strip())
-            spot_diameter = float(self.input_spot_diameter.text().strip())
-            laser_power = float(self.input_laser_power.text().strip())
-            transmission_distance = float(self.input_transmission_distance.text().strip())
-            distance = float(self.input_distance.text().strip())  # 测距机距离
-
-            if wavelength <= 0 or wavelength < 10 or wavelength > 1000:
-                raise ValueError("波长应大于 0 且在 10 到 1000 纳米之间")
-            if laser_power <= 0:
-                raise ValueError("激光功率应大于 0")
-            if spot_diameter <= 0 or spot_diameter > 100:
-                raise ValueError("光斑直径应大于 0 且小于 100 毫米")
-            if aperture <= 0 or aperture > 100:
-                raise ValueError("出射口径应大于0 且小于100毫米")
-            if transmission_distance <= 0:
-                raise ValueError("传输距离应大于 0")
-            if distance <= 0:
-                raise ValueError("测距机距离应大于 0")
-
-            ideal_divergence = calculate_ideal_divergence(wavelength, aperture)
-            actual_divergence = calculate_actual_divergence(spot_diameter, aperture, transmission_distance)
-            quality_factor = calculate_quality_factor(actual_divergence, ideal_divergence)
-
-            self.output_ideal_divergence.setText(f"{ideal_divergence:.3e} rad")
-            self.output_actual_divergence.setText(f"{actual_divergence:.3e} rad")
-            self.output_quality_factor.setText(f"{quality_factor:.3e}")
-
-        except ValueError as e:
-            QMessageBox.critical(self, "输入错误", str(e))
 
 
 class Camera2Widget(QWidget):
@@ -447,44 +182,43 @@ class Camera2Widget(QWidget):
     def __init__(self):
         super().__init__()
         self.camera_thread = None
-        self.rtsp_url = "rtsp://192.168.0.105/live.sdp"  # RTSP地址统一配置
-        self.detail_gain_value = 0  # 细节增益当前值
-        self.algo_type = "A"  # 算法类型
+        self.rtsp_url = "rtsp://192.168.0.105/live.sdp"
+        self.detail_gain_value = 0
+        self.algo_type = "A"
         self.last_original_image = None
         self.last_gray = None
         self.last_3d_image = None
         self.cropped_image = None
+        
+        # 录像相关变量
+        self.is_recording = False
+        self.video_writer = None
+        self.video_filename = ""
+        self.video_params = None  # 存储视频参数用于校验
 
-        # 初始化串口控制器
         self.controller = CameraController_1(baudrate=115200)
         
-        # 初始化UI
         self.setWindowTitle("长波红外相机 - 光斑识别系统")
         self.init_ui()
         self.init_serial_connection()
 
-        # 连接信号
         self.image_signal.connect(self._update_display)
         self.show3d_finished.connect(self._on_show3d_finished)
         self.cropped_image_signal.connect(self._process_cropped_image)
 
     def init_serial_connection(self):
-        """初始化串口连接（自动连接，失败则提示）"""
         if self.controller.connect():
             self.update_status(f"串口连接成功", level="info")
         else:
             self.update_status(f"串口连接失败，请检查设备", level="warn")
 
     def init_ui(self):
-        """完整UI初始化（包含所有功能）"""
         main_layout = QHBoxLayout(self)
         
-        # 左侧控制面板
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_panel.setFixedWidth(600)
         
-        # 标题
         title_label = QLabel("长波红外相机 (RTSP)")
         title_label.setStyleSheet("""
             QLabel {
@@ -500,11 +234,9 @@ class Camera2Widget(QWidget):
         """)
         left_layout.addWidget(title_label)
         
-        # 功能控制区域
         control_group = QGroupBox("功能控制")
         control_layout = QHBoxLayout(control_group)
         
-        # 视频控制按钮
         video_control_group = QGroupBox("视频控制")
         video_control_layout = QVBoxLayout()
         
@@ -519,12 +251,25 @@ class Camera2Widget(QWidget):
         self.stop_btn.clicked.connect(self.pause_camera)
         self.stop_btn.setEnabled(False)
         
+        self.record_start_btn = QPushButton("⏺ 开始录像")
+        self.record_start_btn.setObjectName("func_btn")
+        self.record_start_btn.setMinimumHeight(40)
+        self.record_start_btn.clicked.connect(self.start_recording)
+        self.record_start_btn.setEnabled(False)
+        
+        self.record_stop_btn = QPushButton("■ 停止录像")
+        self.record_stop_btn.setObjectName("func_btn")
+        self.record_stop_btn.setMinimumHeight(40)
+        self.record_stop_btn.clicked.connect(self.stop_recording)
+        self.record_stop_btn.setEnabled(False)
+        
         video_control_layout.addWidget(self.start_btn)
         video_control_layout.addWidget(self.stop_btn)
+        video_control_layout.addWidget(self.record_start_btn)
+        video_control_layout.addWidget(self.record_stop_btn)
         video_control_group.setLayout(video_control_layout)
         left_layout.addWidget(video_control_group)
         
-        # 图像处理按钮
         process_group = QGroupBox("图像处理")
         process_layout = QVBoxLayout()
         
@@ -555,10 +300,6 @@ class Camera2Widget(QWidget):
         process_group.setLayout(process_layout)
         left_layout.addWidget(process_group)
         
-        # 算法选择
-        # 在 init_ui 方法中，找到算法选择的部分，替换为以下代码：
-
-        # 算法选择
         algo_group = QGroupBox("检测算法配置")
         algo_layout = QHBoxLayout(algo_group)
 
@@ -582,14 +323,11 @@ class Camera2Widget(QWidget):
 
         self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
 
-        # 将算法组添加到左侧布局中（在图像处理组之后）
         left_layout.addWidget(algo_group)
         
-        # 相机参数控制按钮区域
         camera_control_group = QGroupBox("相机控制")
         camera_control_layout = QVBoxLayout()
         
-        # 第一行按钮
         hbox1 = QHBoxLayout()
         self.scene_comp_btn = QPushButton("场景补偿")
         self.scene_comp_btn.setObjectName("control_btn")
@@ -604,7 +342,6 @@ class Camera2Widget(QWidget):
         hbox1.addWidget(self.scene_comp_btn)
         hbox1.addWidget(self.shutter_comp_btn)
         
-        # 第二行按钮
         hbox2 = QHBoxLayout()
         self.tele_btn = QPushButton("远焦+")
         self.tele_btn.setObjectName("control_btn")
@@ -619,7 +356,6 @@ class Camera2Widget(QWidget):
         hbox2.addWidget(self.tele_btn)
         hbox2.addWidget(self.wide_btn)
         
-        # 第三行按钮
         hbox3 = QHBoxLayout()
         self.stop_focus_btn = QPushButton("调焦停")
         self.stop_focus_btn.setObjectName("control_btn")
@@ -640,7 +376,6 @@ class Camera2Widget(QWidget):
         camera_control_group.setLayout(camera_control_layout)
         left_layout.addWidget(camera_control_group)
         
-        # 串口控制区域
         serial_group = QGroupBox("串口控制")
         serial_layout = QHBoxLayout()
         
@@ -657,7 +392,6 @@ class Camera2Widget(QWidget):
         serial_group.setLayout(serial_layout)
         left_layout.addWidget(serial_group)
         
-        # 状态显示
         status_group = QGroupBox("连接状态")
         status_layout = QVBoxLayout()
         self.status_label = QLabel("准备连接长波相机...")
@@ -667,7 +401,6 @@ class Camera2Widget(QWidget):
         status_group.setLayout(status_layout)
         left_layout.addWidget(status_group)
         
-        # 视频参数显示
         self.param_group = QGroupBox("视频参数")
         param_layout = QFormLayout()
         self.resolution_label = QLabel("未获取")
@@ -679,7 +412,6 @@ class Camera2Widget(QWidget):
         self.param_group.setLayout(param_layout)
         left_layout.addWidget(self.param_group)
         
-        # 日志显示
         log_group = QGroupBox("系统日志")
         log_layout = QVBoxLayout()
         self.log_text_edit = QTextEdit()
@@ -689,14 +421,11 @@ class Camera2Widget(QWidget):
         log_group.setLayout(log_layout)
         left_layout.addWidget(log_group)
         
-        # 填充剩余空间
         left_layout.addStretch()
         
-        # 右侧图像显示区域
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
-        # 四个图像显示区域
         display_group = QGroupBox("图像显示")
         display_layout = QGridLayout(display_group)
         
@@ -726,11 +455,9 @@ class Camera2Widget(QWidget):
         
         right_layout.addWidget(display_group)
         
-        # 主布局组装
         main_layout.addWidget(left_panel)
         main_layout.addWidget(right_panel)
         
-        # 全局样式
         self.setStyleSheet("""
             QPushButton#func_btn {
                 font-size: 12pt;
@@ -743,6 +470,9 @@ class Camera2Widget(QWidget):
             }
             QPushButton#func_btn:disabled {
                 background-color: #bdc3c7;
+            }
+            QPushButton#func_btn:checked {
+                background-color: #e74c3c;
             }
             QPushButton#control_btn, QPushButton {
                 font-size: 11pt;
@@ -785,7 +515,6 @@ class Camera2Widget(QWidget):
         print(f"[Camera2Widget] UI初始化完成")
 
     def update_status(self, message, level="info"):
-        """更新状态标签和日志"""
         self.status_label.setText(message)
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         self.log_text_edit.append(f"[{timestamp}] {message}")
@@ -795,7 +524,6 @@ class Camera2Widget(QWidget):
         print(f"[状态更新] {message}")
 
     def start_or_resume_camera(self):
-        """开始或恢复视频流"""
         print(f"[Camera2Widget] 点击开始/恢复按钮")
         
         if not self.camera_thread:
@@ -806,41 +534,120 @@ class Camera2Widget(QWidget):
             self.camera_thread.start()
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
+            self.record_start_btn.setEnabled(True)
             self.update_status(f"首次启动视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         elif self.camera_thread.paused and self.camera_thread.isRunning():
             self.camera_thread.resume()
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
+            self.record_start_btn.setEnabled(True)
             self.update_status(f"恢复视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         else:
             self.update_status("视频流已在运行，忽略操作", level="warn")
 
     def pause_camera(self):
-        """暂停视频流"""
         print(f"[Camera2Widget] 点击暂停按钮")
         if not self.camera_thread or not self.camera_thread.isRunning() or self.camera_thread.paused:
             return
         
+        if self.is_recording:
+            self.stop_recording()
+            
         self.camera_thread.pause()
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.record_start_btn.setEnabled(False)
         self.update_status(f"暂停视频流 (线程标识: {self.camera_thread.thread_tag})")
 
-    def process_frame(self, frame):
-        """处理视频帧并进行图像分析"""
+    def start_recording(self):
+        if not self.camera_thread or not self.camera_thread.isRunning() or self.camera_thread.paused:
+            QMessageBox.warning(self, "警告", "请先启动视频流再开始录像")
+            return
+            
+        if self.is_recording:
+            QMessageBox.information(self, "提示", "已经在录像中")
+            return
+            
+        if not self.video_params:
+            QMessageBox.warning(self, "警告", "未获取到视频参数，无法录像")
+            return
+            
         try:
-            # 保存原始图像
+            current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+            self.video_filename = f"recording_{current_time}.mp4"
+            
+            # 使用预存的视频参数（已校验）
+            width = self.video_params["width"]
+            height = self.video_params["height"]
+            fps = self.video_params["fps"]
+            
+            # 再次校验参数范围
+            if width <= 0 or width > 4096 or height <=0 or height > 2160:
+                raise ValueError(f"无效的视频尺寸: {width}x{height}")
+            if fps <= 0 or fps > 60:
+                raise ValueError(f"无效的帧率: {fps}")
+            
+            # 强制转换为C语言兼容的整数类型
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            self.video_writer = cv2.VideoWriter(
+                self.video_filename, 
+                fourcc, 
+                float(fps),  # 确保帧率为浮点数
+                (int(width), int(height))  # 确保宽高为整数
+            )
+            
+            if not self.video_writer.isOpened():
+                raise Exception("无法创建视频文件写入器")
+                
+            self.is_recording = True
+            self.record_start_btn.setEnabled(False)
+            self.record_stop_btn.setEnabled(True)
+            self.update_status(f"开始录像，文件将保存为: {self.video_filename}")
+            
+        except Exception as e:
+            self.update_status(f"录像启动失败: {str(e)}", level="error")
+            QMessageBox.critical(self, "错误", f"录像启动失败: {str(e)}")
+
+    def stop_recording(self):
+        if not self.is_recording or not self.video_writer:
+            return
+            
+        try:
+            self.is_recording = False
+            self.video_writer.release()
+            self.video_writer = None
+            self.record_start_btn.setEnabled(True)
+            self.record_stop_btn.setEnabled(False)
+            self.update_status(f"录像已停止，文件已保存: {self.video_filename}")
+            
+        except Exception as e:
+            self.update_status(f"录像停止失败: {str(e)}", level="error")
+            QMessageBox.critical(self, "错误", f"录像停止失败: {str(e)}")
+
+    def process_frame(self, frame):
+        try:
+            # 校验帧尺寸是否合法
+            if frame is None or frame.size == 0:
+                raise ValueError("空帧，无法处理")
+                
+            height, width = frame.shape[:2]
+            # 录像时写入帧
+            if self.is_recording and self.video_writer:
+                # 确保帧尺寸与录像参数一致
+                if (frame.shape[1], frame.shape[0]) != (self.video_params["width"], self.video_params["height"]):
+                    frame = cv2.resize(frame, (self.video_params["width"], self.video_params["height"]))
+                self.video_writer.write(frame)
+                
             self.last_original_image = frame.copy()
             
-            # 图像处理
+            # 图像处理（增加异常处理）
             gray, blur = preprocess_image_cv(frame)
             spots_output = detect_spots(frame, self.algo_type)
             heatmap = energy_distribution(gray)
             self.last_gray = gray
             
-            # 发送图像信号
             self.image_signal.emit((frame, spots_output, heatmap))
             
         except Exception as e:
@@ -848,216 +655,161 @@ class Camera2Widget(QWidget):
             self.update_status(error_msg, level="error")
 
     def show_cv_image(self, label, img):
-        """在QLabel中显示OpenCV图像"""
-        if len(img.shape) == 2:
-            qImg = QImage(img.data, img.shape[1], img.shape[0], img.strides[0], QImage.Format_Grayscale8)
-        else:
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            qImg = QImage(img_rgb.data, img_rgb.shape[1], img_rgb.shape[0], img_rgb.strides[0], QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(qImg).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
-        label.setPixmap(pixmap)
-
-    def _update_display(self, imgs):
-        """更新图像显示"""
-        try:
-            img_color, spots_output, heatmap = imgs
-            if img_color is not None:
-                self.show_cv_image(self.label1, img_color)
-            if spots_output is not None:
-                self.show_cv_image(self.label2, spots_output)
-            if heatmap is not None:
-                self.show_cv_image(self.label3, heatmap)
+        try:  
+            # 确保图像尺寸合法
+            height, width = img.shape[:2]
+            if width > 4096 or height > 2160:
+                scale = min(label.width()/width, label.height()/height)
+                img = cv2.resize(img, (int(width*scale), int(height*scale)))
+            
+            if len(img.shape) == 2:
+                bytes_per_line = width
+                q_img = QImage(img.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+            else:
+                rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                height, width, channels = rgb_img.shape
+                bytes_per_line = channels * width
+                q_img = QImage(rgb_img.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                
+            pixmap = QPixmap.fromImage(q_img)
+            scaled_pixmap = pixmap.scaled(
+                label.width(), label.height(), 
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            label.setPixmap(scaled_pixmap)
         except Exception as e:
-            self.update_status(f"更新显示异常: {e}", level="error")
+            self.update_status(f"图像显示错误: {str(e)}", level="error")
 
-    def crop_image(self):
-        """图像裁剪功能"""
-        if self.camera_thread and self.camera_thread.isRunning():
-            self.update_status("请先暂停视频流才能进行图像裁切", level="warn")
-            return
+    def _update_display(self, images):
+        frame, spots_output, heatmap = images
+        self.show_cv_image(self.label1, frame)
+        self.show_cv_image(self.label2, spots_output)
+        self.show_cv_image(self.label3, heatmap)
+        
+        if self.last_3d_image is not None:
+            self.show_cv_image(self.label4, self.last_3d_image)
 
-        if not hasattr(self, 'last_original_image') or self.last_original_image is None:
-            self.update_status("没有可用的图像进行裁切", level="warn")
-            return
+    def _on_show3d_finished(self, image_3d):
+        self.last_3d_image = image_3d
+        self.show_cv_image(self.label4, image_3d)
 
-        dialog = CropDialog(self, self.last_original_image)
-        if dialog.exec_() == QDialog.Accepted:
-            cropped_img = dialog.get_cropped_image()
-            if cropped_img is not None:
-                self.update_status("图像裁切完成，正在处理...")
-                # 在新线程中处理裁切图像
-                from threading import Thread
-                Thread(target=self._process_cropped_image_background,
-                       args=(cropped_img,), daemon=True).start()
-
-    def _process_cropped_image_background(self, cropped_img):
-        """在后台线程中处理裁切图像"""
-        try:
+    def _process_cropped_image(self, cropped_img):
+        self.cropped_image = cropped_img
+        if cropped_img is not None:
             gray, blur = preprocess_image_cv(cropped_img)
-            spots_output = detect_and_draw_spots(cropped_img, log_func=self.update_status)
+            spots_output = detect_spots(cropped_img, self.algo_type)
             heatmap = energy_distribution(gray)
-            self.cropped_image = cropped_img
-            self.last_gray = gray
-            self.cropped_image_signal.emit((cropped_img, spots_output, heatmap))
-        except Exception as e:
-            self.update_status(f"处理裁切图像时出错: {e}", level="error")
-
-    def _process_cropped_image(self, imgs):
-        """处理裁切图像结果显示"""
-        try:
-            cropped_img, spots_output, heatmap = imgs
             self.show_cv_image(self.label1, cropped_img)
             self.show_cv_image(self.label2, spots_output)
             self.show_cv_image(self.label3, heatmap)
-            self.update_status("已更新裁切后的图像及处理结果")
-        except Exception as e:
-            self.update_status(f"更新裁切图像显示时出错: {e}", level="error")
+
+    def crop_image(self):
+        if self.last_original_image is None:
+            QMessageBox.warning(self, "警告", "没有可裁切的图像，请先获取视频帧")
+            return
+            
+        dialog = CropDialog(self, self.last_original_image)
+        if dialog.exec_():
+            cropped_img = dialog.get_cropped_image()
+            self.cropped_image_signal.emit(cropped_img)
+            self.update_status("图像裁切完成")
 
     def show_3d_image(self):
-        """显示3D重构图像"""
-        if not hasattr(self, 'last_gray') or self.last_gray is None:
-            self.update_status("没有可用图像进行3D重构", level="warn")
+        if self.last_gray is None:
+            QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
             return
-
-        self.show3d_btn.setEnabled(False)
-        self.update_status("开始3D重构...")
-
-        def worker(gray):
-            try:
-                img3d = generate_3d_image(gray)
-            except Exception as e:
-                self.update_status(f"3D重构失败: {e}", level="error")
-                img3d = None
-            self.show3d_finished.emit(img3d)
-
-        from threading import Thread
-        t = Thread(target=worker, args=(self.last_gray.copy(),), daemon=True)
-        t.start()
-
-    def _on_show3d_finished(self, proj3d):
-        """3D重构完成回调"""
-        if proj3d is None:
-            self.update_status("3D重构失败", level="error")
-        else:
-            self.last_3d_image = proj3d
-            self.show_cv_image(self.label4, proj3d)
-            self.update_status("3D重构完成")
-        self.show3d_btn.setEnabled(True)
+            
+        self.update_status("正在生成3D图像...")
+        class Generate3DThread(QThread):
+            finished = pyqtSignal(np.ndarray)
+            
+            def __init__(self, gray_img):
+                super().__init__()
+                self.gray_img = gray_img
+                
+            def run(self):
+                try:
+                    image_3d = generate_3d_image(self.gray_img)
+                    self.finished.emit(image_3d)
+                except Exception as e:
+                    print(f"生成3D图像错误: {str(e)}")
+                    self.finished.emit(None)
+        
+        self.gen_3d_thread = Generate3DThread(self.last_gray)
+        self.gen_3d_thread.finished.connect(self.show3d_finished)
+        self.gen_3d_thread.start()
 
     def save_all(self):
-        """保存所有图像和日志"""
-        import cv2
-        save_dir = os.path.join(os.getcwd(), "Saved_Images_Camera2")
-        os.makedirs(save_dir, exist_ok=True)
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-
-        def save_label_image(label, name):
-            pixmap = label.pixmap()
-            if pixmap is None:
-                self.update_status(f"⚠️ {name} 窗格为空，跳过保存。", level="warn")
-                return False
-
-            qimg = pixmap.toImage().convertToFormat(QImage.Format_RGB888)
-            w, h = qimg.width(), qimg.height()
-            ptr = qimg.bits()
-            ptr.setsize(qimg.byteCount())
-            arr = np.frombuffer(ptr, np.uint8)
-            try:
-                arr = arr.reshape((h, w, 3))
-            except Exception as e:
-                self.update_status(f"❌ 转换 {name} 图像失败: {e}", level="error")
-                return False
-            img_bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-            file_path = os.path.join(save_dir, f"{timestamp}_{name}.jpg")
-            success = cv2.imwrite(file_path, img_bgr)
-            if success:
-                self.update_status(f"✅ 已保存 {file_path}")
-            else:
-                self.update_status(f"❌ 保存 {name} 失败。", level="error")
-            return success
-
-        save_label_image(self.label1, "original")
-        save_label_image(self.label2, "spots")
-        save_label_image(self.label3, "heatmap")
-        save_label_image(self.label4, "3d")
-
-        log_path = os.path.join(save_dir, f"{timestamp}_spots.txt")
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write(self.log_text_edit.toPlainText())
-
-        self.update_status(f"📝 已保存日志到 {log_path}")
-        self.update_status("✅ 所有保存任务完成。")
+        if self.last_original_image is None:
+            QMessageBox.warning(self, "警告", "没有可保存的图像，请先获取视频帧")
+            return
+            
+        try:
+            current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+            
+            orig_filename = f"original_{current_time}.png"
+            cv2.imwrite(orig_filename, self.last_original_image)
+            
+            gray, blur = preprocess_image_cv(self.last_original_image)
+            spots_output = detect_spots(self.last_original_image, self.algo_type)
+            spots_filename = f"spots_{current_time}.png"
+            cv2.imwrite(spots_filename, spots_output)
+            
+            heatmap = energy_distribution(gray)
+            heat_filename = f"heatmap_{current_time}.png"
+            cv2.imwrite(heat_filename, heatmap)
+            
+            if self.last_3d_image is not None:
+                d3_filename = f"3d_{current_time}.png"
+                cv2.imwrite(d3_filename, self.last_3d_image)
+            
+            self.update_status(f"图像保存完成: {orig_filename}, {spots_filename}, {heat_filename}")
+            QMessageBox.information(self, "成功", "所有图像保存完成")
+            
+        except Exception as e:
+            error_msg = f"图像保存失败: {str(e)}"
+            self.update_status(error_msg, level="error")
+            QMessageBox.critical(self, "错误", error_msg)
 
     def open_parameter_calculation_window(self):
-        """打开参数计算器窗口"""
-        self.parameter_calculation_window = ParameterCalculationWindow()
-        self.parameter_calculation_window.show()
-        self.update_status("参数计算器已打开")
+        self.param_window = ParameterCalculationWindow()
+        self.param_window.show()
 
-    def update_params(self, params):
-        """更新视频参数显示"""
-        self.resolution_label.setText(f"{params['width']}x{params['height']}")
-        self.fps_label.setText(f"{params['fps']}")
-        codec = params['codec']
-        codec_str = "".join([chr((codec >> 8 * i) & 0xFF) for i in range(4)])
-        self.codec_label.setText(codec_str)
-        self.update_status(f"参数更新：分辨率{params['width']}x{params['height']}，FPS{params['fps']}，编码{codec_str}")
-
-    # ----------------------
-    # 串口控制相关方法
-    # ----------------------
-    def toggle_serial_conn(self):
-        """切换串口连接状态（连接/断开）"""
-        if self.controller.is_connected():
-            # 已连接：断开
-            self.controller.disconnect()
-            self.serial_conn_btn.setText("连接")
-            self.update_status("串口已断开", level="info")
-        else:
-            # 未连接：尝试连接选中端口
-            selected_port = self.serial_combo.currentText()
-            if selected_port == "无可用串口":
-                self.update_status("请先刷新并选择串口", level="error")
-                return
-            if self.controller.connect(port=selected_port):
-                self.serial_conn_btn.setText("断开")
-                self.update_status(f"串口[{selected_port}]连接成功", level="info")
-            else:
-                self.update_status(f"串口[{selected_port}]连接失败", level="error")
-
-    # ----------------------
-    # 相机控制接口
-    # ----------------------
     def on_scene_compensation(self):
-        if self.controller.scene_compensation():
-            self.update_status("触发场景补偿（命令发送成功）")
-        else:
-            self.update_status("场景补偿命令发送失败", level="error")
+        try:
+            self.controller.scene_compensation()
+            self.update_status("已发送场景补偿命令")
+        except Exception as e:
+            self.update_status(f"发送场景补偿命令失败: {str(e)}", level="error")
 
     def on_shutter_compensation(self):
-        if self.controller.shutter_compensation():
-            self.update_status("触发快门补偿（命令发送成功）")
-        else:
-            self.update_status("快门补偿命令发送失败", level="error")
+        try:
+            self.controller.shutter_compensation()
+            self.update_status("已发送快门补偿命令")
+        except Exception as e:
+            self.update_status(f"发送快门补偿命令失败: {str(e)}", level="error")
 
     def on_tele_focus(self):
-        if self.controller.tele_focus():
-            self.update_status("触发远焦+（命令发送成功）")
-        else:
-            self.update_status("远焦+命令发送失败", level="error")
+        try:
+            self.controller.tele_focus()
+            self.update_status("已发送远焦调节命令")
+        except Exception as e:
+            self.update_status(f"发送远焦调节命令失败: {str(e)}", level="error")
 
     def on_wide_focus(self):
-        if self.controller.wide_focus():
-            self.update_status("触发近焦-（命令发送成功）")
-        else:
-            self.update_status("近焦-命令发送失败", level="error")
+        try:
+            self.controller.wide_focus()
+            self.update_status("已发送近焦调节命令")
+        except Exception as e:
+            self.update_status(f"发送近焦调节命令失败: {str(e)}", level="error")
 
     def on_stop_focus(self):
-        if self.controller.stop_focus():
-            self.update_status("触发调焦停（命令发送成功）")
-        else:
-            self.update_status("调焦停命令发送失败", level="error")
+        try:
+            self.controller.stop_focus()
+            self.update_status("已发送停止调焦命令")
+        except Exception as e:
+            self.update_status(f"发送停止调焦命令失败: {str(e)}", level="error")
 
     def on_detail_gain(self):
         dialog = DetailGainDialog(self, self.detail_gain_value)
@@ -1069,27 +821,47 @@ class Camera2Widget(QWidget):
             else:
                 self.update_status(f"细节增益设置失败", level="error")
 
+    def toggle_serial_conn(self):
+        if self.controller.is_connected():
+            try:
+                self.controller.disconnect()
+                self.serial_conn_btn.setText("连接")
+                self.update_status("串口已断开")
+            except Exception as e:
+                self.update_status(f"断开串口失败: {str(e)}", level="error")
+        else:
+            try:
+                port = self.serial_combo.currentText()
+                if port:
+                    self.controller.port = port
+                    if self.controller.connect():
+                        self.serial_conn_btn.setText("断开")
+                        self.update_status(f"串口 {port} 连接成功")
+                    else:
+                        self.update_status(f"串口 {port} 连接失败", level="error")
+                else:
+                    self.update_status("请先选择串口端口", level="warn")
+            except Exception as e:
+                self.update_status(f"连接串口失败: {str(e)}", level="error")
+
+    def update_params(self, params):
+        """保存并显示视频参数，增加校验"""
+        self.video_params = params  # 保存参数用于录像
+        self.resolution_label.setText(f"{params['width']}x{params['height']}")
+        self.fps_label.setText(f"{params['fps']}")
+        codec = params['codec']
+        codec_str = "".join([chr((codec >> 8 * i) & 0xFF) for i in range(4)])
+        self.codec_label.setText(codec_str)
+
     def closeEvent(self, event):
-        """窗口关闭时释放所有资源"""
-        self.update_status("正在关闭窗口，释放资源...")
+        if self.is_recording:
+            self.stop_recording()
+            
         if self.camera_thread:
             self.camera_thread.stop_thread()
-            try:
-                self.camera_thread.frame_signal.disconnect(self.process_frame)
-                self.camera_thread.status_signal.disconnect()
-                self.camera_thread.param_signal.disconnect(self.update_params)
-            except:
-                pass
-            self.camera_thread = None
-        # 断开串口连接
+            
         if self.controller.is_connected():
             self.controller.disconnect()
-        self.update_status("资源已释放，窗口关闭")
-        super().closeEvent(event)
+            
+        event.accept()
 
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = Camera2Widget()
-    window.show()
-    sys.exit(app.exec_())

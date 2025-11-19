@@ -1,4 +1,5 @@
 import cv2
+import os
 import numpy as np
 import sys
 import time
@@ -7,8 +8,27 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QPushButton, QGroupBox, QFormLayout,
-                            QRadioButton, QButtonGroup, QLineEdit, QMessageBox)
+                            QDialog, QSlider, QMessageBox, QSpinBox, QDialogButtonBox,
+                            QTextEdit, QComboBox, QStackedWidget, QTableWidget, 
+                            QTableWidgetItem, QLineEdit, QGridLayout, QButtonGroup,
+                         QSpacerItem, QRadioButton)
+
+
+# 添加maindlg的系统路径
+current_script_path = os.path.abspath(__file__)
+parent_dir = os.path.dirname(os.path.dirname(current_script_path))
+sys.path.append(parent_dir)
+
+sys.path.append(os.path.dirname(__file__))
+
+#导入自己写的包
 from cam2_3_serialControl import CameraController_2  # 导入相机控制类
+from CSMainDialog.spot_detection import preprocess_image_cv, detect_and_draw_spots, energy_distribution
+from CSMainDialog.reconstruction3d import generate_3d_image
+from CSMainDialog.parameter_calculation import ParameterCalculationWindow
+from CSMainDialog.image_cropper import CropDialog
+from CSMainDialog.spot_algorithms import detect_spots
+
 
 class Camera3Thread(QThread):
     """相机线程（支持启动/暂停，复用资源）"""
@@ -135,14 +155,41 @@ class Camera3Thread(QThread):
 
 
 class Camera3Widget(QWidget):
+    # 添加相机界面
+    image_signal = pyqtSignal(object)
+    show3d_finished = pyqtSignal(np.ndarray)
+    cropped_image_signal = pyqtSignal(object)
+
     def __init__(self):
         super().__init__()
         self.camera_thread = None
         self.rtsp_url = "rtsp://192.168.0.106/live.sdp"  # RTSP地址统一配置
-        self.camera_controller = CameraController_2()  # 创建相机控制器实例
+        self.controller = CameraController_2()  # 创建相机控制器实例
         self.setWindowTitle("RTSP视频流监控与相机控制")
-        print(f"[Camera3Widget] 初始化界面")
+        self.algo_type = "A"
+        self.last_original_image = None
+        self.last_gray = None
+        self.last_3d_image = None
+        self.cropped_image = None
+        
+        # 录像相关变量
+        self.is_recording = False
+        self.video_writer = None
+        self.video_filename = ""
+        self.video_params = None  # 存储视频参数用于校验
+
         self.init_ui()
+        self.init_serial_connection()
+
+        self.image_signal.connect(self._update_display)
+        self.show3d_finished.connect(self._on_show3d_finished)
+        self.cropped_image_signal.connect(self._process_cropped_image)
+
+    def init_serial_connection(self):
+        if self.controller.connect():
+            self.update_status(f"串口连接成功")
+        else:
+            self.update_status(f"串口连接失败，请检查设备")
 
     def init_ui(self):
         """完整UI初始化（包含新增控制功能）"""
@@ -183,12 +230,81 @@ class Camera3Widget(QWidget):
         self.stop_btn.setMinimumHeight(40)
         self.stop_btn.clicked.connect(self.pause_camera)
         self.stop_btn.setEnabled(False)
+
+        self.record_start_btn = QPushButton("⏺ 开始录像")
+        self.record_start_btn.setObjectName("func_btn")
+        self.record_start_btn.setMinimumHeight(40)
+        self.record_start_btn.clicked.connect(self.start_recording)
+        self.record_start_btn.setEnabled(False)
+        
+        self.record_stop_btn = QPushButton("■ 停止录像")
+        self.record_stop_btn.setObjectName("func_btn")
+        self.record_stop_btn.setMinimumHeight(40)
+        self.record_stop_btn.clicked.connect(self.stop_recording)
+        self.record_stop_btn.setEnabled(False)
         
         video_control_layout.addWidget(self.start_btn)
         video_control_layout.addWidget(self.stop_btn)
+        video_control_layout.addWidget(self.record_start_btn)
+        video_control_layout.addWidget(self.record_stop_btn)
         video_control_group.setLayout(video_control_layout)
         left_layout.addWidget(video_control_group)
         
+        process_group = QGroupBox("图像处理")
+        process_layout = QVBoxLayout()
+        
+        self.crop_btn = QPushButton("✂️ 裁切图像")
+        self.crop_btn.setObjectName("control_btn")
+        self.crop_btn.setMinimumHeight(30)
+        self.crop_btn.clicked.connect(self.crop_image)
+        
+        self.show3d_btn = QPushButton("📊 显示 3D")
+        self.show3d_btn.setObjectName("control_btn")
+        self.show3d_btn.setMinimumHeight(30)
+        self.show3d_btn.clicked.connect(self.show_3d_image)
+        
+        self.save_all_btn = QPushButton("💿 保存全部")
+        self.save_all_btn.setObjectName("control_btn")
+        self.save_all_btn.setMinimumHeight(30)
+        self.save_all_btn.clicked.connect(self.save_all)
+        
+        self.param_calc_btn = QPushButton("📐 参数计算")
+        self.param_calc_btn.setObjectName("control_btn")
+        self.param_calc_btn.setMinimumHeight(30)
+        self.param_calc_btn.clicked.connect(self.open_parameter_calculation_window)
+        
+        process_layout.addWidget(self.crop_btn)
+        process_layout.addWidget(self.show3d_btn)
+        process_layout.addWidget(self.save_all_btn)
+        process_layout.addWidget(self.param_calc_btn)
+        process_group.setLayout(process_layout)
+        left_layout.addWidget(process_group)
+        
+        algo_group = QGroupBox("检测算法配置")
+        algo_layout = QHBoxLayout(algo_group)
+
+        self.btn_grp = QButtonGroup(self)
+        algo_buttons = [
+            ("标准算法", "A"),
+            ("双光斑算法", "B"), 
+            ("单光斑去噪", "C"),
+            ("框选识别", "D")
+        ]
+
+        for idx, (name, key) in enumerate(algo_buttons):
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setObjectName("control_btn")
+            btn.setMinimumHeight(30)
+            self.btn_grp.addButton(btn, idx)
+            algo_layout.addWidget(btn)
+            if key == "A":
+                btn.setChecked(True)
+
+        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
+
+        left_layout.addWidget(algo_group)
+
         # 串口连接控制
         serial_group = QGroupBox("串口连接")
         serial_layout = QHBoxLayout()
@@ -332,21 +448,90 @@ class Camera3Widget(QWidget):
         # 右侧视频显示区域（暂停时保留最后一帧）
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        self.video_label = QLabel()
-        self.video_label.setFixedSize(800, 600)
-        self.video_label.setStyleSheet("""
-            QLabel {
-                background-color: #2c3e50;
-                border: 2px solid #34495e;
-                border-radius: 6px;
-                color: white;
+        
+        display_group = QGroupBox("图像显示")
+        display_layout = QGridLayout(display_group)
+        
+        self.label1 = QLabel("原始图像")
+        self.label2 = QLabel("光斑识别") 
+        self.label3 = QLabel("能量分布")
+        self.label4 = QLabel("3D重构")
+        
+        for label in [self.label1, self.label2, self.label3, self.label4]:
+            label.setObjectName("image_display")
+            label.setFixedSize(320, 240)
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("""
+                QLabel#image_display {
+                    background-color: #2c3e50;
+                    color: #ecf0f1;
+                    border: 2px solid #34495e;
+                    border-radius: 6px;
+                    font-weight: bold;
+                }
+            """)
+        
+        display_layout.addWidget(self.label1, 0, 0)
+        display_layout.addWidget(self.label2, 0, 1)
+        display_layout.addWidget(self.label3, 1, 0)
+        display_layout.addWidget(self.label4, 1, 1)
+        
+        right_layout.addWidget(display_group)
+        
+        main_layout.addWidget(left_panel)
+        main_layout.addWidget(right_panel)
+        
+        self.setStyleSheet("""
+            QPushButton#func_btn {
+                font-size: 12pt;
                 font-weight: bold;
+                color: white;
+                background-color: #3498db;
+                border-radius: 5px;
+                padding: 5px;
+                margin: 5px;
+            }
+            QPushButton#func_btn:disabled {
+                background-color: #bdc3c7;
+            }
+            QPushButton#func_btn:checked {
+                background-color: #e74c3c;
+            }
+            QPushButton#control_btn, QPushButton {
+                font-size: 11pt;
+                font-weight: bold;
+                color: white;
+                background-color: #2ecc71;
+                border-radius: 5px;
+                padding: 5px;
+                margin: 5px;
+            }
+            QPushButton:pressed {
+                background-color: #27ae60;
+            }
+            QGroupBox {
+                font-size: 11pt;
+                font-weight: bold;
+                color: #2c3e50;
+                margin: 10px;
+                padding: 10px;
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+            }
+            QTextEdit {
+                font-size: 10pt;
+                color: #333;
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+                padding: 5px;
+            }
+            QComboBox {
+                font-size: 11pt;
+                padding: 3px;
+                margin: 5px;
+                border-radius: 3px;
             }
         """)
-        self.video_label.setAlignment(Qt.AlignCenter)
-        self.video_label.setText("视频显示区域\n等待启动...")
-        right_layout.addWidget(self.video_label)
-        right_layout.setAlignment(Qt.AlignCenter)
         
         # 主布局组装
         main_layout.addWidget(left_panel)
@@ -393,6 +578,11 @@ class Camera3Widget(QWidget):
         self.setMinimumSize(1250, 650)
         print(f"[Camera3Widget] UI初始化完成")
 
+    def update_status(self, message):
+        """更新状态信息（已移除日志功能）"""
+        self.status_label.setText(message)
+        print(f"[状态更新] {message}")
+
     def start_or_resume_camera(self):
         """开始或恢复视频流（统一处理）"""
         print(f"[Camera3Widget] 点击开始/恢复按钮")
@@ -406,6 +596,7 @@ class Camera3Widget(QWidget):
             self.camera_thread.start()
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
+            self.record_start_btn.setEnabled(True)  # 启动后允许录像
             print(f"[Camera3Widget] 首次启动视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         # 情况2：线程已创建且处于暂停状态
@@ -413,6 +604,7 @@ class Camera3Widget(QWidget):
             self.camera_thread.resume()
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
+            self.record_start_btn.setEnabled(True)
             print(f"[Camera3Widget] 恢复视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         # 情况3：线程已在运行（忽略重复点击）
@@ -428,11 +620,17 @@ class Camera3Widget(QWidget):
         self.camera_thread.pause()
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.record_start_btn.setEnabled(False)  # 暂停时不允许录像
+        if self.is_recording:
+            self.stop_recording()  # 暂停时自动停止录像
         print(f"[Camera3Widget] 暂停视频流 (线程标识: {self.camera_thread.thread_tag})")
 
     def update_frame(self, frame):
         """更新视频帧（暂停时保留最后一帧）"""
         try:
+            # 处理帧（包括录像）
+            self.process_frame(frame)
+            
             # 颜色空间转换（BGR->RGB）
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             # 转换为QImage
@@ -441,24 +639,86 @@ class Camera3Widget(QWidget):
             qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
             # 缩放适配显示区域
             pixmap = QPixmap.fromImage(qt_image).scaled(
-                self.video_label.width(), 
-                self.video_label.height(),
+                self.label1.width(), 
+                self.label1.height(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
-            self.video_label.setPixmap(pixmap)
+            self.label1.setPixmap(pixmap)
         except Exception as e:
             error_msg = f"帧处理错误: {str(e)}"
             self.update_status(error_msg)
             print(f"[Camera3Widget] {error_msg}")
 
-    def update_status(self, message):
-        """更新状态信息"""
-        self.status_label.setText(message)
-        print(f"[状态更新] {message}")
+    # 录像相关函数
+    def start_recording(self):
+        if not self.camera_thread or not self.camera_thread.isRunning() or self.camera_thread.paused:
+            QMessageBox.warning(self, "警告", "请先启动视频流再开始录像")
+            return
+            
+        if self.is_recording:
+            QMessageBox.information(self, "提示", "已经在录像中")
+            return
+            
+        if not self.video_params:
+            QMessageBox.warning(self, "警告", "未获取到视频参数，无法录像")
+            return
+            
+        try:
+            current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+            self.video_filename = f"./Saved_Files/Cam3/Cam3_recording_{current_time}.mp4"
+            
+            # 使用预存的视频参数（已校验）
+            width = self.video_params["width"]
+            height = self.video_params["height"]
+            fps = self.video_params["fps"]
+            
+            # 再次校验参数范围
+            if width <= 0 or width > 4096 or height <=0 or height > 2160:
+                raise ValueError(f"无效的视频尺寸: {width}x{height}")
+            if fps <= 0 or fps > 60:
+                raise ValueError(f"无效的帧率: {fps}")
+            
+            # 强制转换为C语言兼容的整数类型
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            self.video_writer = cv2.VideoWriter(
+                self.video_filename, 
+                fourcc, 
+                float(fps),  # 确保帧率为浮点数
+                (int(width), int(height))  # 确保宽高为整数
+            )
+            
+            if not self.video_writer.isOpened():
+                raise Exception("无法创建视频文件写入器")
+                
+            self.is_recording = True
+            self.record_start_btn.setEnabled(False)
+            self.record_stop_btn.setEnabled(True)
+            self.update_status(f"开始录像，文件将保存为: {self.video_filename}")
+            
+        except Exception as e:
+            self.update_status(f"录像启动失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"录像启动失败: {str(e)}")
+
+    def stop_recording(self):
+        if not self.is_recording or not self.video_writer:
+            return
+            
+        try:
+            self.is_recording = False
+            self.video_writer.release()
+            self.video_writer = None
+            self.record_start_btn.setEnabled(True)
+            self.record_stop_btn.setEnabled(False)
+            self.update_status(f"录像已停止，文件已保存: {self.video_filename}")
+            
+        except Exception as e:
+            self.update_status(f"录像停止失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"录像停止失败: {str(e)}")
 
     def update_params(self, params):
         """更新视频参数显示"""
+        self.video_params = params  # 保存参数用于录像
         self.resolution_label.setText(f"{params['width']}x{params['height']}")
         self.fps_label.setText(f"{params['fps']}")
         # 编码格式转换为可读字符串
@@ -467,10 +727,128 @@ class Camera3Widget(QWidget):
         self.codec_label.setText(codec_str)
         print(f"[参数更新] 分辨率: {params['width']}x{params['height']}, FPS: {params['fps']}, 编码: {codec_str}")
 
-    # 新增的串口控制函数
+    def process_frame(self, frame):
+        try:
+            # 校验帧尺寸是否合法
+            if frame is None or frame.size == 0:
+                raise ValueError("空帧，无法处理")
+                
+            height, width = frame.shape[:2]
+            # 录像时写入帧
+            if self.is_recording and self.video_writer:
+                # 确保帧尺寸与录像参数一致
+                if (frame.shape[1], frame.shape[0]) != (self.video_params["width"], self.video_params["height"]):
+                    frame = cv2.resize(frame, (self.video_params["width"], self.video_params["height"]))
+                self.video_writer.write(frame)
+                
+            self.last_original_image = frame.copy()
+            
+            # 图像处理
+            gray, blur = preprocess_image_cv(frame)
+            spots_output = detect_spots(frame, self.algo_type)
+            heatmap = energy_distribution(gray)
+            self.last_gray = gray
+            
+            self.image_signal.emit((frame, spots_output, heatmap))
+            
+        except Exception as e:
+            error_msg = f"帧处理错误: {str(e)}"
+            self.update_status(error_msg)
+
+    def show_cv_image(self, label, img):
+        try:  
+            # 确保图像尺寸合法
+            height, width = img.shape[:2]
+            if width > 4096 or height > 2160:
+                scale = min(label.width()/width, label.height()/height)
+                img = cv2.resize(img, (int(width*scale), int(height*scale)))
+            
+            if len(img.shape) == 2:
+                bytes_per_line = width
+                q_img = QImage(img.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+            else:
+                rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                height, width, channels = rgb_img.shape
+                bytes_per_line = channels * width
+                q_img = QImage(rgb_img.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                
+            pixmap = QPixmap.fromImage(q_img)
+            scaled_pixmap = pixmap.scaled(
+                label.width(), label.height(), 
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            label.setPixmap(scaled_pixmap)
+        except Exception as e:
+            self.update_status(f"图像显示错误: {str(e)}")
+
+    def _update_display(self, images):
+        # 注释掉未定义的标签引用，可根据实际需求调整显示逻辑
+        frame, spots_output, heatmap = images
+        self.show_cv_image(self.label1, frame)
+        self.show_cv_image(self.label2, spots_output)
+        self.show_cv_image(self.label3, heatmap)
+        
+        if self.last_3d_image is not None:
+            pass
+            self.show_cv_image(self.label4, self.last_3d_image)
+
+    def _on_show3d_finished(self, image_3d):
+        self.last_3d_image = image_3d
+        # 注释掉未定义的标签引用
+        self.show_cv_image(self.label4, image_3d)
+
+    def _process_cropped_image(self, cropped_img):
+        self.cropped_image = cropped_img
+        if cropped_img is not None:
+            gray, blur = preprocess_image_cv(cropped_img)
+            spots_output = detect_spots(cropped_img, self.algo_type)
+            heatmap = energy_distribution(gray)
+            # 注释掉未定义的标签引用
+            self.show_cv_image(self.label1, cropped_img)
+            self.show_cv_image(self.label2, spots_output)
+            self.show_cv_image(self.label3, heatmap)
+
+    def crop_image(self):
+        if self.last_original_image is None:
+            QMessageBox.warning(self, "警告", "没有可裁切的图像，请先获取视频帧")
+            return
+            
+        dialog = CropDialog(self, self.last_original_image)
+        if dialog.exec_():
+            cropped_img = dialog.get_cropped_image()
+            self.cropped_image_signal.emit(cropped_img)
+            self.update_status("图像裁切完成")
+
+    def show_3d_image(self):
+        if self.last_gray is None:
+            QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
+            return
+            
+        self.update_status("正在生成3D图像...")
+        class Generate3DThread(QThread):
+            finished = pyqtSignal(np.ndarray)
+            
+            def __init__(self, gray_img):
+                super().__init__()
+                self.gray_img = gray_img
+                
+            def run(self):
+                try:
+                    image_3d = generate_3d_image(self.gray_img)
+                    self.finished.emit(image_3d)
+                except Exception as e:
+                    print(f"生成3D图像错误: {str(e)}")
+                    self.finished.emit(None)
+        
+        self.gen_3d_thread = Generate3DThread(self.last_gray)
+        self.gen_3d_thread.finished.connect(self.show3d_finished)
+        self.gen_3d_thread.start()
+
+    # 串口控制函数
     def connect_serial(self):
         """连接串口"""
-        if self.camera_controller.connect():
+        if self.controller.connect():
             self.update_status("串口连接成功")
             self.connect_serial_btn.setEnabled(False)
             self.disconnect_serial_btn.setEnabled(True)
@@ -487,7 +865,7 @@ class Camera3Widget(QWidget):
 
     def disconnect_serial(self):
         """断开串口连接"""
-        self.camera_controller.disconnect()
+        self.controller.disconnect()
         self.update_status("串口已断开连接")
         self.connect_serial_btn.setEnabled(True)
         self.disconnect_serial_btn.setEnabled(False)
@@ -499,24 +877,85 @@ class Camera3Widget(QWidget):
         self.set_integration_btn.setEnabled(False)
         self.set_fps_btn.setEnabled(False)
 
-    # 新增的相机控制函数
+    def save_all(self):
+        if self.last_original_image is None:
+            QMessageBox.warning(self, "警告", "没有可保存的图像，请先获取视频帧")
+            return
+
+        try:
+            # 创建保存目录
+            save_dir = "./Saved_Files/Cam3"
+            os.makedirs(save_dir, exist_ok=True)
+
+            # 时间戳
+            current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+
+            # === 1. 保存原图 ===
+            orig_filename = f"{save_dir}/original_{current_time}.png"
+            if not cv2.imwrite(orig_filename, self.last_original_image):
+                raise IOError("原始图像保存失败")
+
+            # === 2. 斑点检测 ===
+            gray, blur = preprocess_image_cv(self.last_original_image)
+            spots_output = detect_spots(self.last_original_image, self.algo_type)
+
+            spots_filename = f"{save_dir}/spots_{current_time}.png"
+            if not cv2.imwrite(spots_filename, spots_output):
+                raise IOError("斑点检测图保存失败")
+
+            # === 3. 热力图 ===
+            heatmap = energy_distribution(gray)
+            heat_filename = f"{save_dir}/heatmap_{current_time}.png"
+            if not cv2.imwrite(heat_filename, heatmap):
+                raise IOError("热力图保存失败")
+
+            # === 4. 3D 图（如果存在） ===
+            if self.last_3d_image is not None:
+                d3_filename = f"{save_dir}/3d_{current_time}.png"
+                if not cv2.imwrite(d3_filename, self.last_3d_image):
+                    raise IOError("3D 图保存失败")
+            else:
+                d3_filename = "（无 3D 图）"
+
+            # 状态信息输出
+            self.update_status(
+                f"保存完成:\n"
+                f"原图: {orig_filename}\n"
+                f"斑点图: {spots_filename}\n"
+                f"热力图: {heat_filename}\n"
+                f"3D 图: {d3_filename}"
+            )
+
+            QMessageBox.information(self, "成功", "所有图像保存完成")
+
+        except Exception as e:
+            error_msg = f"图像保存失败: {str(e)}"
+            self.update_status(error_msg, level="error")
+            QMessageBox.critical(self, "错误", error_msg)
+
+
+    def open_parameter_calculation_window(self):
+        self.param_window = ParameterCalculationWindow()
+        self.param_window.show()
+
+    # 相机控制函数
     def tele_focus(self):
         """调焦+"""
-        if self.camera_controller.tele_focus():
+        if self.controller.tele_focus():
             self.update_status("发送调焦+命令")
         else:
             self.update_status("调焦+命令发送失败")
 
     def wide_focus(self):
         """调焦-"""
-        if self.camera_controller.wide_focus():
+        if self.controller.wide_focus():
             self.update_status("发送调焦-命令")
         else:
             self.update_status("调焦-命令发送失败")
 
     def stop_focus(self):
         """调焦停"""
-        if self.camera_controller.stop_focus():
+        if self.controller.stop_focus():
             self.update_status("发送调焦停命令")
         else:
             self.update_status("调焦停命令发送失败")
@@ -524,7 +963,7 @@ class Camera3Widget(QWidget):
     def set_zoom(self, button):
         """设置电子放大倍数"""
         zoom_level = self.zoom_group.id(button)
-        if self.camera_controller.set_zoom(zoom_level):
+        if self.controller.set_zoom(zoom_level):
             self.update_status(f"设置电子放大为{[1, 2, 4][zoom_level]}倍")
         else:
             self.update_status("电子放大设置失败")
@@ -533,7 +972,7 @@ class Camera3Widget(QWidget):
         """设置积分时间"""
         try:
             ms = float(self.integration_input.text())
-            if self.camera_controller.set_integration_time(ms):
+            if self.controller.set_integration_time(ms):
                 self.update_status(f"设置积分时间为{ms}ms")
             else:
                 self.update_status("积分时间设置失败")
@@ -544,7 +983,7 @@ class Camera3Widget(QWidget):
         """设置帧频"""
         try:
             hz = float(self.fps_input.text())
-            if self.camera_controller.set_frame_rate(hz):
+            if self.controller.set_frame_rate(hz):
                 self.update_status(f"设置帧频为{hz}Hz")
             else:
                 self.update_status("帧频设置失败")
@@ -553,7 +992,7 @@ class Camera3Widget(QWidget):
 
     def scene_compensation(self):
         """场景补偿"""
-        if self.camera_controller.scene_compensation():
+        if self.controller.scene_compensation():
             self.update_status("发送场景补偿命令")
         else:
             self.update_status("场景补偿命令发送失败")
@@ -573,6 +1012,6 @@ class Camera3Widget(QWidget):
                 pass
             self.camera_thread = None
         # 断开串口连接
-        self.camera_controller.disconnect()
+        self.controller.disconnect()
         super().closeEvent(event)
 

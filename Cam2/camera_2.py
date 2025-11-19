@@ -576,7 +576,7 @@ class Camera2Widget(QWidget):
             
         try:
             current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-            self.video_filename = f"recording_{current_time}.mp4"
+            self.video_filename = f"./Saved_Files/Cam2/Cam2_recording_{current_time}.mp4"
             
             # 使用预存的视频参数（已校验）
             width = self.video_params["width"]
@@ -744,33 +744,52 @@ class Camera2Widget(QWidget):
         if self.last_original_image is None:
             QMessageBox.warning(self, "警告", "没有可保存的图像，请先获取视频帧")
             return
-            
+
         try:
+            # 创建保存目录
+            save_dir = "./Saved_Files/Cam2"
+            os.makedirs(save_dir, exist_ok=True)
+
+            # 生成时间戳
             current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-            
-            orig_filename = f"original_{current_time}.png"
-            cv2.imwrite(orig_filename, self.last_original_image)
-            
+
+            # === 1. 保存原图 ===
+            orig_filename = f"{save_dir}/original_{current_time}.png"
+            if not cv2.imwrite(orig_filename, self.last_original_image):
+                raise IOError("原始图像写入失败")
+
+            # === 2. 保存斑点检测图 ===
             gray, blur = preprocess_image_cv(self.last_original_image)
             spots_output = detect_spots(self.last_original_image, self.algo_type)
-            spots_filename = f"spots_{current_time}.png"
-            cv2.imwrite(spots_filename, spots_output)
-            
+            spots_filename = f"{save_dir}/spots_{current_time}.png"
+            if not cv2.imwrite(spots_filename, spots_output):
+                raise IOError("斑点检测图保存失败")
+
+            # === 3. 保存热力图 ===
             heatmap = energy_distribution(gray)
-            heat_filename = f"heatmap_{current_time}.png"
-            cv2.imwrite(heat_filename, heatmap)
-            
+            heat_filename = f"{save_dir}/heatmap_{current_time}.png"
+            if not cv2.imwrite(heat_filename, heatmap):
+                raise IOError("热力图保存失败")
+
+            # === 4. 可选：保存 3D 图 ===
             if self.last_3d_image is not None:
-                d3_filename = f"3d_{current_time}.png"
-                cv2.imwrite(d3_filename, self.last_3d_image)
-            
-            self.update_status(f"图像保存完成: {orig_filename}, {spots_filename}, {heat_filename}")
+                d3_filename = f"{save_dir}/3d_{current_time}.png"
+                if not cv2.imwrite(d3_filename, self.last_3d_image):
+                    raise IOError("3D 图保存失败")
+            else:
+                d3_filename = "（无 3D 图）"
+
+            # 状态更新
+            self.update_status(
+                f"保存完成:\n原图: {orig_filename}\n斑点图: {spots_filename}\n热力图: {heat_filename}\n3D 图: {d3_filename}"
+            )
             QMessageBox.information(self, "成功", "所有图像保存完成")
-            
+
         except Exception as e:
             error_msg = f"图像保存失败: {str(e)}"
             self.update_status(error_msg, level="error")
             QMessageBox.critical(self, "错误", error_msg)
+
 
     def open_parameter_calculation_window(self):
         self.param_window = ParameterCalculationWindow()

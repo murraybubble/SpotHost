@@ -930,19 +930,19 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbImport)   # 放在参数计算按钮旁边
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)
-        for idx, (name, key) in enumerate([("标准算法", "A"),
-                                   ("双光斑算法", "B"),
-                                   ("单光斑去噪", "C"),
-                                   ("框选识别", "D")]):
-            btn = QPushButton(name)
+        algo_list = [("标准算法", "A"), ("双光斑算法", "B"),
+             ("单光斑去噪", "C"), ("框选识别", "D")]
+        for idx, (text, key) in enumerate(algo_list):
+            btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("func_btn")
             btn.setFixedHeight(40)
-            btn.setProperty("algo_key", key)          # 关键：把 key 存起来
+            btn.setProperty("algo_key", key)          # 把真正的 key 挂在按钮上
             self.btn_grp.addButton(btn, idx)
             control_layout.addWidget(btn)
             if key == "A":
                btn.setChecked(True)
+# 连接槽函数——只读 key，不再碰 text
         self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))
 
         control_layout.addStretch()

@@ -300,31 +300,39 @@ class Camera2Widget(QWidget):
         process_group.setLayout(process_layout)
         left_layout.addWidget(process_group)
         
+
+           # ================== 算法选择 ==================
         algo_group = QGroupBox("检测算法配置")
         algo_layout = QHBoxLayout(algo_group)
 
-        self.btn_grp = QButtonGroup(self)
-        algo_buttons = [
+        self.btn_grp = QButtonGroup(self)          # 已在类里声明过，这里直接用
+        algo_buttons = [                           # 中文显示 + 真实 key
             ("标准算法", "A"),
-            ("双光斑算法", "B"), 
+            ("双光斑算法", "B"),
             ("单光斑去噪", "C"),
             ("框选识别", "D")
         ]
 
-        for idx, (text, key) in enumerate(algo_list):
+        for idx, (text, key) in enumerate(algo_buttons):
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("func_btn")
             btn.setFixedHeight(40)
-            btn.setProperty("algo_key", key)          # 把真正的 key 挂在按钮上
+            btn.setProperty("algo_key", key)       # 关键：挂真实 key
             self.btn_grp.addButton(btn, idx)
-            control_layout.addWidget(btn)
-            if key == "A":
-               btn.setChecked(True)
-# 连接槽函数——只读 key，不再碰 text
-        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))
+            algo_layout.addWidget(btn)
+            if key == "A":                         # 默认选中 A
+                btn.setChecked(True)
+
+        # 连接槽——只读 key，不再碰中文 text
+        self.btn_grp.buttonClicked.connect(
+            lambda b: setattr(self, 'algo_type', b.property("algo_key"))
+        )
 
         left_layout.addWidget(algo_group)
+    # =============================================
+
+
         
         camera_control_group = QGroupBox("相机控制")
         camera_control_layout = QVBoxLayout()

@@ -68,10 +68,10 @@ class main_Dialog(QWidget):
         self.cropped_image_signal.connect(self._process_cropped_image)
         self.range_result_signal.connect(self.update_range_display)
         # 录像相关
-        #self.recording = False           # 是否正在录像
-        #self.video_writer = None         # cv2.VideoWriter 对象
-        #self.record_start_time = None    # 开始录像的时间字符串
-        #self.last_video_path = None      # 上一次录像文件路径
+        self.recording = False           # 是否正在录像
+        self.video_writer = None         # cv2.VideoWriter 对象
+        self.record_start_time = None    # 开始录像的时间字符串
+        self.last_video_path = None      # 上一次录像文件路径
 
 
     def closeEvent(self, event):
@@ -434,6 +434,31 @@ class main_Dialog(QWidget):
         img_color = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
         self.last_original_image = img_color.copy()
 
+        # ===== 录像：在这里写入视频帧 =====
+        if self.recording:
+            if self.video_writer is None:
+                # 第一次写入时创建 VideoWriter
+                save_dir = os.path.join(os.getcwd(), "Recorded_Videos")
+                os.makedirs(save_dir, exist_ok=True)
+                filename = f"{self.record_start_time}.mp4"
+                self.last_video_path = os.path.join(save_dir, filename)
+
+                h, w, _ = img_color.shape
+                # 使用 mp4v 编码，帧率假设 25fps（如果你知道真实帧率，可自行修改）
+                fourcc = cv.VideoWriter_fourcc(*'mp4v')
+                self.video_writer = cv.VideoWriter(self.last_video_path, fourcc, 25.0, (w, h))
+
+                if not self.video_writer.isOpened():
+                    self.log("视频写入器创建失败，停止录像")
+                    self.video_writer = None
+                    self.recording = False
+                else:
+                    self.log(f"开始写入视频：{self.last_video_path}")
+
+            if self.video_writer is not None:
+                self.video_writer.write(img_color)
+        # ===== 录像逻辑结束 =====
+
         gray, blur = preprocess_image_cv(img_color)
         spots_output = detect_spots(img_color, self.algo_type)
         heatmap = energy_distribution(gray)
@@ -581,6 +606,8 @@ class main_Dialog(QWidget):
         self.pbCropImage.setEnabled(1)
         self.pbSaveSettings.setEnabled(1)
         self.pbLoadSettings.setEnabled(1)
+        self.pbRecord.setEnabled(1)
+
 
         self.infoTable.setItem(0, 1, QTableWidgetItem(self.deviceInfo.GetVendor()))
         self.infoTable.setItem(1, 1, QTableWidgetItem(self.deviceInfo.GetModel()))
@@ -616,6 +643,12 @@ class main_Dialog(QWidget):
             if hasattr(self, 'device'):
                 self.device.Release()
 
+        # 如果正在录像，先停掉
+        if self.recording:
+            self._stop_recording()
+
+        self.pbRecord.setEnabled(0)
+        self.pbRecord.setText('🎥 录制视频')
         self.pbPlay.setEnabled(0)
         self.pbStop.setEnabled(0)
         self.pbConnect.setEnabled(1)
@@ -647,6 +680,10 @@ class main_Dialog(QWidget):
         self.log("相机回放已开始")
 
     def camStop(self):
+        # 停止回放时如果在录像，也一并停止
+        if self.recording:
+            self._stop_recording()
+
         self.log("停止相机回放")
         self.pbStop.setEnabled(0)
         self.stop = True
@@ -675,6 +712,53 @@ class main_Dialog(QWidget):
         if self.parView:
             IpxCameraGuiApiPy.PyDestroyGenParamTreeView(self.parView)
         self.parView = IpxCameraGuiApiPy.PyCreateGenParamTreeViewForArray(self.gPars, self.winId())
+
+    def toggle_record(self):
+        """录像按钮：第一次点击开始，再次点击停止并保存"""
+        # 如果没有相机或没开始采集，禁止录像
+        if not hasattr(self, 'device') or not getattr(self, 'device', None) or not self.device.IsValid():
+            QMessageBox.warning(self, "提示", "相机未连接，无法录像")
+            return
+
+        # 如果你有外部图片模式，可以顺便限制一下（可选）
+        if hasattr(self, 'external_mode') and self.external_mode:
+            QMessageBox.information(self, "提示", "当前为外部图片模式，无法录像")
+            return
+
+        if not self.recording:
+            # 开始录像
+            self.recording = True
+            self.record_start_time = time.strftime("%Y%m%d_%H%M%S")
+            self.video_writer = None  # 延迟到第一帧再创建
+            self.last_video_path = None
+            self.pbRecord.setText("⏹ 停止录制")
+            self.log("开始录像，将把相机原始画面保存为视频文件")
+        else:
+            # 停止录像
+            self._stop_recording()   
+
+    def _stop_recording(self):
+        """真正停止录像并释放资源"""
+        if not self.recording:
+            return
+
+        self.recording = False
+        if self.video_writer is not None:
+            try:
+                self.video_writer.release()
+            except Exception:
+                pass
+            self.video_writer = None
+            if self.last_video_path:
+                self.log(f"录像已保存到文件：{self.last_video_path}")
+                QMessageBox.information(self, "录像完成", f"视频已保存到：\n{self.last_video_path}")
+            else:
+                self.log("录像结束，但没有帧写入")
+        else:
+            self.log("录像已停止（未创建视频文件）")
+
+        self.pbRecord.setText("🎥 录制视频")
+
 
     def _on_show3d_finished(self, proj3d):
         if proj3d is None:
@@ -913,8 +997,9 @@ class main_Dialog(QWidget):
         self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('📐 参数计算',
                                                           self.open_parameter_calculation_window, True)
-        # 新增：导入图片按钮
         self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
+        self.pbRecord = create_function_btn('🎥 录制视频', self.toggle_record, False)
+
 
         control_layout.addWidget(self.pbConnect)
         control_layout.addWidget(self.pbDisconnect)
@@ -928,6 +1013,7 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
         control_layout.addWidget(self.pbImport)   # 放在参数计算按钮旁边
+        control_layout.addWidget(self.pbRecord)
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)
         algo_list = [("标准算法", "A"), ("双光斑算法", "B"),

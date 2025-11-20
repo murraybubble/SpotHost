@@ -126,7 +126,7 @@ def _algo_C(img, max_spots=1):
     return out
 
 # ================== D：框选后 + 二次亮度校验 ==================
-def _algo_D(img, max_spots=3):
+def _algo_D(img, max_spots=1):
     # 直接走 A，已含亮度校验
     return _algo_A(img, max_spots)
 

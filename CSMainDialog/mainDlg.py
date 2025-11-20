@@ -942,7 +942,9 @@ class main_Dialog(QWidget):
             control_layout.addWidget(btn)
             if key == "A":
                 btn.setChecked(True)
-        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
+        for btn in self.btn_grp.buttons():
+            btn.setProperty("algo_key", btn.text()[-2])
+        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))
 
         control_layout.addStretch()
         control_layout.addStretch()

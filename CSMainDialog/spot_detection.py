@@ -3,8 +3,8 @@ import numpy as np
 
 def preprocess_image_cv(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # blur = cv2.GaussianBlur(gray, (51, 51), 0)
-    return gray
+    blur = cv2.GaussianBlur(gray, (51, 51), 0)
+    return gray, blur
 
 
 def detect_and_draw_spots(

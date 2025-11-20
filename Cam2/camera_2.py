@@ -311,17 +311,18 @@ class Camera2Widget(QWidget):
             ("框选识别", "D")
         ]
 
-        for idx, (name, key) in enumerate(algo_buttons):
-            btn = QPushButton(name)
+        for idx, (text, key) in enumerate(algo_list):
+            btn = QPushButton(text)
             btn.setCheckable(True)
-            btn.setObjectName("control_btn")
-            btn.setMinimumHeight(30)
+            btn.setObjectName("func_btn")
+            btn.setFixedHeight(40)
+            btn.setProperty("algo_key", key)          # 把真正的 key 挂在按钮上
             self.btn_grp.addButton(btn, idx)
-            algo_layout.addWidget(btn)
+            control_layout.addWidget(btn)
             if key == "A":
-                btn.setChecked(True)
-
-        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.text()[-2]))
+               btn.setChecked(True)
+# 连接槽函数——只读 key，不再碰 text
+        self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))
 
         left_layout.addWidget(algo_group)
         

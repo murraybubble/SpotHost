@@ -931,19 +931,18 @@ class main_Dialog(QWidget):
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)
         for idx, (name, key) in enumerate([("标准算法", "A"),
-                                           ("双光斑算法", "B"),
-                                           ("单光斑去噪", "C"),
-                                           ("框选识别", "D")]):
+                                   ("双光斑算法", "B"),
+                                   ("单光斑去噪", "C"),
+                                   ("框选识别", "D")]):
             btn = QPushButton(name)
             btn.setCheckable(True)
             btn.setObjectName("func_btn")
             btn.setFixedHeight(40)
+            btn.setProperty("algo_key", key)          # 关键：把 key 存起来
             self.btn_grp.addButton(btn, idx)
             control_layout.addWidget(btn)
             if key == "A":
-                btn.setChecked(True)
-        for btn in self.btn_grp.buttons():
-            btn.setProperty("algo_key", btn.text()[-2])
+               btn.setChecked(True)
         self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))
 
         control_layout.addStretch()

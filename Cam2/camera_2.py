@@ -306,7 +306,7 @@ class Camera2Widget(QWidget):
         algo_layout = QHBoxLayout(algo_group)
 
         self.btn_grp = QButtonGroup(self)          # 已在类里声明过，这里直接用
-        algo_buttons = [                           # 中文显示 + 真实 key
+        algo_buttons = [                           # 中文显示 + 真实 key1
             ("标准算法", "A"),
             ("双光斑算法", "B"),
             ("单光斑去噪", "C"),

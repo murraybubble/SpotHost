@@ -311,7 +311,7 @@ class Camera2Widget(QWidget):
             ("框选识别", "D")
         ]
 
-        for idx, (text, key) in enumerate(algo_list):
+        for idx, (text, key) in enumerate(algo_buttons):
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("func_btn")

@@ -347,7 +347,6 @@ class main_Dialog(QWidget):
         t.start()
 
     def save_all(self):
-        import cv2
         save_dir = os.path.join(os.getcwd(), "Saved_Images")
         os.makedirs(save_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -368,10 +367,10 @@ class main_Dialog(QWidget):
             except Exception as e:
                 self.log(f"❌ 转换 {name} 图像失败: {e}")
                 return False
-            img_bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            img_bgr = cv.cvtColor(arr, cv.COLOR_RGB2BGR)
 
             file_path = os.path.join(save_dir, f"{timestamp}_{name}.jpg")
-            success = cv2.imwrite(file_path, img_bgr)
+            success = cv.imwrite(file_path, img_bgr)
             if success:
                 self.log(f"✅ 已保存 {file_path}")
             else:

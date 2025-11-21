@@ -55,6 +55,8 @@ def _algo_A(img, max_spots=3):
     coords, radii = coords[idx], radii[idx]
     out, used = img.copy(), np.zeros_like(opening, bool)
     det = 0
+    areas = []      # 保存面积
+    centers = []    # 保存圆心坐标
     for (y, x), r in zip(coords, radii):
         if det >= max_spots: break
         r = int(r)
@@ -65,12 +67,26 @@ def _algo_A(img, max_spots=3):
         overlap = np.logical_and(used, mask.astype(bool)).sum() / (np.pi * r * r + 1e-6)
         if overlap > 0.5: continue
         if cv2.mean(gray, mask=mask * 255)[0] < thresh_val: continue
+        # 画圆
         cv2.circle(out, (x, y), r, (0, 0, 255), 2)
+        # 画圆心
+        cv2.circle(out, (x, y), 3, (255, 0, 0), -1)
+        # 计算面积
+        area = int(np.sum(mask > 0))
+        areas.append(area)
+        centers.append((int(x), int(y)))
+        # 写文字：面积 + 坐标
+        text = f"{area}px  ({x},{y})"
+        cv2.putText(out, text, (x + r + 5, y), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
         used |= mask.astype(bool)
         det += 1
     if not det:
         print(f"【检测错误 {ERR_NO_VALID_SPOT}】最终可画光斑数为 0")
         return img
+    # 控制台打印
+    print("【光斑面积】", areas)
+    print("【圆心坐标】", centers)
     return out
 
 # ================== B：双光斑 ==================
@@ -114,20 +130,31 @@ def _algo_C(img, max_spots=1):
     keep = keep[:max_spots]
     out, used = img.copy(), np.zeros_like(opening, bool)
     det = 0
+    areas = []
+    centers = []
     for x, y, r in keep:
         mask = np.zeros_like(opening, dtype=np.uint8)
         cv2.circle(mask, (x, y), r, 1, -1)
         if cv2.mean(gray, mask=mask * 255)[0] < thresh_val: continue
         cv2.circle(out, (x, y), r, (0, 0, 255), 2)
+        cv2.circle(out, (x, y), 3, (255, 0, 0), -1)
+        area = int(np.sum(mask > 0))
+        areas.append(area)
+        centers.append((int(x), int(y)))
+        text = f"{area}px  ({x},{y})"
+        cv2.putText(out, text, (x + r + 5, y), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
         used |= mask.astype(bool); det += 1
     if not det:
         print(f"【检测错误 {ERR_NO_VALID_SPOT}】最终可画光斑数为 0")
         return img
+    print("【光斑面积】", areas)
+    print("【圆心坐标】", centers)
     return out
 
 # ================== D：框选后 + 二次亮度校验 ==================
 def _algo_D(img, max_spots=1):
-    # 直接走 A，已含亮度校验
+    # 直接走 A，已含圆心、面积输出
     return _algo_A(img, max_spots)
 
 # ================== 统一对外接口 ==================

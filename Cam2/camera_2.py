@@ -213,33 +213,15 @@ class Camera2Widget(QWidget):
             self.update_status(f"串口连接失败，请检查设备", level="warn")
 
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        # 主布局改为垂直布局，顶部添加工具栏
+        main_layout = QVBoxLayout(self)
         
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_panel.setFixedWidth(600)
+        # 顶部工具栏 - 放置常用控制按钮
+        top_toolbar = QWidget()
+        top_toolbar.setFixedHeight(60)
+        top_layout = QHBoxLayout(top_toolbar)
         
-        title_label = QLabel("长波红外相机 (RTSP)")
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #2c3e50;
-                font-size: 16pt;
-                font-weight: bold;
-                padding: 10px;
-                background-color: #ecf0f1;
-                border-radius: 5px;
-                margin: 5px;
-                text-align: center;
-            }
-        """)
-        left_layout.addWidget(title_label)
-        
-        control_group = QGroupBox("功能控制")
-        control_layout = QHBoxLayout(control_group)
-        
-        video_control_group = QGroupBox("视频控制")
-        video_control_layout = QVBoxLayout()
-        
+        # 视频控制按钮 - 放置在顶部
         self.start_btn = QPushButton("▶ 开始/恢复视频流")
         self.start_btn.setObjectName("func_btn")
         self.start_btn.setMinimumHeight(40)
@@ -263,50 +245,73 @@ class Camera2Widget(QWidget):
         self.record_stop_btn.clicked.connect(self.stop_recording)
         self.record_stop_btn.setEnabled(False)
         
-        video_control_layout.addWidget(self.start_btn)
-        video_control_layout.addWidget(self.stop_btn)
-        video_control_layout.addWidget(self.record_start_btn)
-        video_control_layout.addWidget(self.record_stop_btn)
-        video_control_group.setLayout(video_control_layout)
-        left_layout.addWidget(video_control_group)
+        top_layout.addWidget(self.start_btn)
+        top_layout.addWidget(self.stop_btn)
+        top_layout.addWidget(self.record_start_btn)
+        top_layout.addWidget(self.record_stop_btn)
         
-        process_group = QGroupBox("图像处理")
-        process_layout = QVBoxLayout()
+        # 添加分隔线
+        top_layout.addSpacing(20)
         
+        # 图像处理按钮 - 放置在顶部
         self.crop_btn = QPushButton("✂️ 裁切图像")
         self.crop_btn.setObjectName("control_btn")
-        self.crop_btn.setMinimumHeight(30)
+        self.crop_btn.setMinimumHeight(40)
         self.crop_btn.clicked.connect(self.crop_image)
         
         self.show3d_btn = QPushButton("📊 显示 3D")
         self.show3d_btn.setObjectName("control_btn")
-        self.show3d_btn.setMinimumHeight(30)
+        self.show3d_btn.setMinimumHeight(40)
         self.show3d_btn.clicked.connect(self.show_3d_image)
         
         self.save_all_btn = QPushButton("💿 保存全部")
         self.save_all_btn.setObjectName("control_btn")
-        self.save_all_btn.setMinimumHeight(30)
+        self.save_all_btn.setMinimumHeight(40)
         self.save_all_btn.clicked.connect(self.save_all)
         
         self.param_calc_btn = QPushButton("📐 参数计算")
         self.param_calc_btn.setObjectName("control_btn")
-        self.param_calc_btn.setMinimumHeight(30)
+        self.param_calc_btn.setMinimumHeight(40)
         self.param_calc_btn.clicked.connect(self.open_parameter_calculation_window)
         
-        process_layout.addWidget(self.crop_btn)
-        process_layout.addWidget(self.show3d_btn)
-        process_layout.addWidget(self.save_all_btn)
-        process_layout.addWidget(self.param_calc_btn)
-        process_group.setLayout(process_layout)
-        left_layout.addWidget(process_group)
+        top_layout.addWidget(self.crop_btn)
+        top_layout.addWidget(self.show3d_btn)
+        top_layout.addWidget(self.save_all_btn)
+        top_layout.addWidget(self.param_calc_btn)
         
-
-           # ================== 算法选择 ==================
+        top_layout.addStretch()
+        main_layout.addWidget(top_toolbar)
+        
+        # 主内容区域 - 分为左侧和右侧
+        content_widget = QWidget()
+        content_layout = QHBoxLayout(content_widget)
+        
+        # 左侧面板 - 缩小宽度，使其在1080p下更合适
+        left_panel = QWidget()
+        left_panel.setMaximumWidth(400)  # 从600调整为400
+        left_layout = QVBoxLayout(left_panel)
+        
+        title_label = QLabel("长波红外相机 (RTSP)")
+        title_label.setStyleSheet("""
+            QLabel {
+                color: #2c3e50;
+                font-size: 14pt;
+                font-weight: bold;
+                padding: 8px;
+                background-color: #ecf0f1;
+                border-radius: 5px;
+                margin: 5px;
+                text-align: center;
+            }
+        """)
+        left_layout.addWidget(title_label)
+        
+        # 算法选择
         algo_group = QGroupBox("检测算法配置")
         algo_layout = QHBoxLayout(algo_group)
 
-        self.btn_grp = QButtonGroup(self)          # 已在类里声明过，这里直接用
-        algo_buttons = [                           # 中文显示 + 真实 key1
+        self.btn_grp = QButtonGroup(self)          
+        algo_buttons = [                         
             ("标准算法", "A"),
             ("双光斑算法", "B"),
             ("单光斑去噪", "C"),
@@ -317,23 +322,20 @@ class Camera2Widget(QWidget):
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("func_btn")
-            btn.setFixedHeight(40)
-            btn.setProperty("algo_key", key)       # 关键：挂真实 key
+            btn.setFixedHeight(35)
+            btn.setProperty("algo_key", key)       
             self.btn_grp.addButton(btn, idx)
             algo_layout.addWidget(btn)
-            if key == "A":                         # 默认选中 A
+            if key == "A":                         
                 btn.setChecked(True)
 
-        # 连接槽——只读 key，不再碰中文 text
         self.btn_grp.buttonClicked.connect(
             lambda b: setattr(self, 'algo_type', b.property("algo_key"))
         )
 
         left_layout.addWidget(algo_group)
-    # =============================================
-
-
         
+        # 相机控制
         camera_control_group = QGroupBox("相机控制")
         camera_control_layout = QVBoxLayout()
         
@@ -385,6 +387,7 @@ class Camera2Widget(QWidget):
         camera_control_group.setLayout(camera_control_layout)
         left_layout.addWidget(camera_control_group)
         
+        # 串口控制
         serial_group = QGroupBox("串口控制")
         serial_layout = QHBoxLayout()
         
@@ -401,15 +404,17 @@ class Camera2Widget(QWidget):
         serial_group.setLayout(serial_layout)
         left_layout.addWidget(serial_group)
         
+        # 连接状态
         status_group = QGroupBox("连接状态")
         status_layout = QVBoxLayout()
         self.status_label = QLabel("准备连接长波相机...")
-        self.status_label.setStyleSheet("color: #7f8c8d; padding: 5px; font-size: 11pt;")
+        self.status_label.setStyleSheet("color: #7f8c8d; padding: 5px; font-size: 10pt;")
         self.status_label.setWordWrap(True)
         status_layout.addWidget(self.status_label)
         status_group.setLayout(status_layout)
         left_layout.addWidget(status_group)
         
+        # 视频参数
         self.param_group = QGroupBox("视频参数")
         param_layout = QFormLayout()
         self.resolution_label = QLabel("未获取")
@@ -421,10 +426,11 @@ class Camera2Widget(QWidget):
         self.param_group.setLayout(param_layout)
         left_layout.addWidget(self.param_group)
         
+        # 系统日志 - 调整高度，使其不占用过多空间
         log_group = QGroupBox("系统日志")
         log_layout = QVBoxLayout()
         self.log_text_edit = QTextEdit()
-        self.log_text_edit.setMaximumHeight(150)
+        self.log_text_edit.setMaximumHeight(120)  # 从150调整为120
         self.log_text_edit.setReadOnly(True)
         log_layout.addWidget(self.log_text_edit)
         log_group.setLayout(log_layout)
@@ -432,20 +438,28 @@ class Camera2Widget(QWidget):
         
         left_layout.addStretch()
         
+        # 右侧面板 - 图像显示区域，尽可能大
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
+        right_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        display_group = QGroupBox("图像显示")
+        display_group = QGroupBox("图像显示 (640x512)")
         display_layout = QGridLayout(display_group)
+        display_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
+        # 图像标签 - 设置合理的最小尺寸，保持640x512比例
         self.label1 = QLabel("原始图像")
         self.label2 = QLabel("光斑识别") 
         self.label3 = QLabel("能量分布")
         self.label4 = QLabel("3D重构")
         
+        # 计算640x512的宽高比 (1.25)，设置合适的最小尺寸
+        min_width = 320
+        min_height = 256  # 保持640x512的比例
+        
         for label in [self.label1, self.label2, self.label3, self.label4]:
             label.setObjectName("image_display")
-            label.setFixedSize(320, 240)
+            label.setMinimumSize(min_width, min_height)
             label.setAlignment(Qt.AlignCenter)
             label.setStyleSheet("""
                 QLabel#image_display {
@@ -456,26 +470,37 @@ class Camera2Widget(QWidget):
                     font-weight: bold;
                 }
             """)
+            label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         display_layout.addWidget(self.label1, 0, 0)
         display_layout.addWidget(self.label2, 0, 1)
         display_layout.addWidget(self.label3, 1, 0)
         display_layout.addWidget(self.label4, 1, 1)
         
+        # 设置网格布局的拉伸因子，使图像区域尽可能大
+        display_layout.setRowStretch(0, 1)
+        display_layout.setRowStretch(1, 1)
+        display_layout.setColumnStretch(0, 1)
+        display_layout.setColumnStretch(1, 1)
+        
         right_layout.addWidget(display_group)
+        right_layout.setStretch(0, 1)  # 让显示区域拉伸填充空间
         
-        main_layout.addWidget(left_panel)
-        main_layout.addWidget(right_panel)
+        content_layout.addWidget(left_panel)
+        content_layout.addWidget(right_panel, 1)  # 右侧权重更高，获得更多空间
         
+        main_layout.addWidget(content_widget, 1)  # 内容区域权重更高
+        
+        # 调整样式表，使按钮在较小空间内仍清晰可见
         self.setStyleSheet("""
             QPushButton#func_btn {
-                font-size: 12pt;
+                font-size: 10pt;
                 font-weight: bold;
                 color: white;
                 background-color: #3498db;
                 border-radius: 5px;
                 padding: 5px;
-                margin: 5px;
+                margin: 3px;
             }
             QPushButton#func_btn:disabled {
                 background-color: #bdc3c7;
@@ -484,43 +509,43 @@ class Camera2Widget(QWidget):
                 background-color: #e74c3c;
             }
             QPushButton#control_btn, QPushButton {
-                font-size: 11pt;
+                font-size: 10pt;
                 font-weight: bold;
                 color: white;
                 background-color: #2ecc71;
                 border-radius: 5px;
-                padding: 5px;
-                margin: 5px;
+                padding: 3px;
+                margin: 3px;
             }
             QPushButton:pressed {
                 background-color: #27ae60;
             }
             QGroupBox {
-                font-size: 11pt;
+                font-size: 10pt;
                 font-weight: bold;
                 color: #2c3e50;
-                margin: 10px;
-                padding: 10px;
+                margin: 8px;
+                padding: 8px;
                 border: 1px solid #bdc3c7;
                 border-radius: 5px;
             }
             QTextEdit {
-                font-size: 10pt;
+                font-size: 9pt;
                 color: #333;
                 border: 1px solid #bdc3c7;
                 border-radius: 3px;
-                padding: 5px;
+                padding: 3px;
             }
             QComboBox {
-                font-size: 11pt;
-                padding: 3px;
-                margin: 5px;
+                font-size: 10pt;
+                padding: 2px;
+                margin: 3px;
                 border-radius: 3px;
             }
         """)
         
         self.setLayout(main_layout)
-        self.setMinimumSize(1350, 700)
+        self.setMinimumSize(1200, 700)  # 调整最小尺寸，适合1080p
         print(f"[Camera2Widget] UI初始化完成")
 
     def update_status(self, message, level="info"):
@@ -665,11 +690,25 @@ class Camera2Widget(QWidget):
 
     def show_cv_image(self, label, img):
         try:  
-            # 确保图像尺寸合法
+            # 确保图像尺寸合法，保持640x512的比例
             height, width = img.shape[:2]
-            if width > 4096 or height > 2160:
-                scale = min(label.width()/width, label.height()/height)
-                img = cv2.resize(img, (int(width*scale), int(height*scale)))
+            # 计算图像的宽高比
+            img_ratio = width / height
+            # 计算标签的宽高比
+            label_ratio = label.width() / label.height()
+            
+            # 根据比例决定缩放方式，保持图像比例
+            if img_ratio > label_ratio:
+                # 图像更宽，按宽度缩放
+                new_width = label.width()
+                new_height = int(new_width / img_ratio)
+            else:
+                # 图像更高，按高度缩放
+                new_height = label.height()
+                new_width = int(new_height * img_ratio)
+                
+            img = cv2.resize(img, (new_width, new_height))
+            height, width = img.shape[:2]
             
             if len(img.shape) == 2:
                 bytes_per_line = width
@@ -892,4 +931,3 @@ class Camera2Widget(QWidget):
             self.controller.disconnect()
             
         event.accept()
-

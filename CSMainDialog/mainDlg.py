@@ -347,7 +347,7 @@ class main_Dialog(QWidget):
         t.start()
 
     def save_all(self):
-        save_dir = os.path.join(os.getcwd(), "Saved_Images")
+        save_dir = os.path.join(os.getcwd(), "Saved_Results")
         os.makedirs(save_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
 

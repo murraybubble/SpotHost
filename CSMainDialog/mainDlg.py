@@ -438,7 +438,7 @@ class main_Dialog(QWidget):
         if self.recording:
             if self.video_writer is None:
                 # 第一次写入时创建 VideoWriter
-                save_dir = os.path.join(os.getcwd(), "Recorded_Videos")
+                save_dir = os.path.join(os.getcwd(), "Cam1_Videos")
                 os.makedirs(save_dir, exist_ok=True)
                 filename = f"{self.record_start_time}.mp4"
                 self.last_video_path = os.path.join(save_dir, filename)

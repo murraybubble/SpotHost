@@ -389,6 +389,7 @@ class main_Dialog(QWidget):
         self.log(f"📝 已保存日志到 {log_path}")
         self.log("✅ 所有保存任务完成。")
 
+    
     def CreateDataStreamBuffers(self):
         if hasattr(self, 'data_stream'):
             self.data_stream.FlushBuffers(self.data_stream.Flush_AllDiscard)

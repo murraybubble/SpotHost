@@ -1,21 +1,28 @@
-# 忽略每次运行保存的图像
+# 忽略相机保存的输出文件
+# 摄像机1录像文件
+Cam1_Videos/
+
+# 保存的图片（自动截图、热力图、3D）
 Saved_Images/
-# 忽略所有 __pycache__ 目录
+
+# 如果未来有更多自动保存文件夹
+Saved_Files/
+
+# Python 缓存与临时文件
 __pycache__/
-
-# 忽略所有 .pyc 字节码文件（包括非 __pycache__ 目录下的）
 *.pyc
-# 忽略优化后的字节码文件
 *.pyo
-# 忽略 Python 3.8+ 生成的调试字节码文件
-*.pyi
+*.pyd      # 正确的扩展名（原来的 *.pyi 是错误的）
+*.pdb
+*.egg-info/
+*.log
 
+# PyInstaller 打包目录
 build/
-
 dist/
-
 *.spec
 
-Saved_Images_*
-
-Saved_Files/
+# 临时文件（如运行日志、调试生成）
+*.tmp
+*.bak
+*.swp

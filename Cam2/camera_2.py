@@ -184,7 +184,7 @@ class Camera2Widget(QWidget):
         self.camera_thread = None
         self.rtsp_url = "rtsp://192.168.0.105/live.sdp"
         self.detail_gain_value = 0
-        self.algo_type = "A"
+        self.algo_type = "B"
         self.last_original_image = None
         self.last_gray = None
         self.last_3d_image = None

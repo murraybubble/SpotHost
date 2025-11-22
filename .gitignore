@@ -26,3 +26,5 @@ dist/
 *.tmp
 *.bak
 *.swp
+
+camera_setting/

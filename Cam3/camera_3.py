@@ -4,7 +4,7 @@ import numpy as np
 import sys
 import time
 import serial
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QSize
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QPushButton, QGroupBox, QFormLayout,
@@ -154,6 +154,54 @@ class Camera3Thread(QThread):
         print(f"[Camera3Thread] 线程彻底停止 (标识: {self.thread_tag})")
 
 
+class ImageProcessingThread(QThread):
+    """图像处理线程，独立于UI线程"""
+    processed_signal = pyqtSignal(tuple)  # (原始帧, 光斑识别结果, 能量分布)
+    
+    def __init__(self):
+        super().__init__()
+        self.running = True
+        self.current_frame = None
+        self.algo_type = "A"
+        self.lock = False  # 用于帧丢弃机制的锁
+        
+    def set_frame(self, frame):
+        """设置当前要处理的帧，如果正在处理则丢弃旧帧"""
+        if self.lock:
+            return  # 正在处理，丢弃当前帧
+        self.current_frame = frame
+        
+    def set_algo_type(self, algo_type):
+        """设置算法类型"""
+        self.algo_type = algo_type
+        
+    def run(self):
+        while self.running:
+            if self.current_frame is not None and not self.lock:
+                self.lock = True  # 标记正在处理
+                try:
+                    frame = self.current_frame
+                    self.current_frame = None  # 处理后清空，准备接收新帧
+                    
+                    # 处理帧
+                    gray, blur = preprocess_image_cv(frame)
+                    spots_output = detect_spots(frame, self.algo_type)
+                    heatmap = energy_distribution(gray)
+                    
+                    # 发送处理结果
+                    self.processed_signal.emit((frame, spots_output, heatmap))
+                except Exception as e:
+                    print(f"图像处理错误: {str(e)}")
+                finally:
+                    self.lock = False  # 处理完成，解锁
+            else:
+                self.msleep(10)  # 短暂休眠，降低CPU占用
+                
+    def stop(self):
+        self.running = False
+        self.wait()
+
+
 class Camera3Widget(QWidget):
     # 添加相机界面
     image_signal = pyqtSignal(object)
@@ -177,6 +225,11 @@ class Camera3Widget(QWidget):
         self.video_writer = None
         self.video_filename = ""
         self.video_params = None  # 存储视频参数用于校验
+
+        # 创建图像处理线程
+        self.processing_thread = ImageProcessingThread()
+        self.processing_thread.processed_signal.connect(self._on_processed)
+        self.processing_thread.start()
 
         self.init_ui()
         self.init_serial_connection()
@@ -318,7 +371,7 @@ class Camera3Widget(QWidget):
                 btn.setChecked(True)
         
         self.btn_grp.buttonClicked.connect(
-            lambda b: setattr(self, 'algo_type', b.property("algo_key"))
+            lambda b: self._on_algo_changed(b.property("algo_key"))
         )
         
         top_layout.addStretch()
@@ -680,11 +733,28 @@ class Camera3Widget(QWidget):
         print(f"[Camera3Widget] 暂停视频流 (线程标识: {self.camera_thread.thread_tag})")
 
     def update_frame(self, frame):
-        """更新视频帧（暂停时保留最后一帧）"""
+        """接收新帧并交给处理线程"""
         try:
-            # 处理帧（包括录像）
-            self.process_frame(frame)
+            # 录像处理在主线程简单处理，只写原始帧
+            self.handle_recording(frame)
             
+            # 保存原始帧引用
+            self.last_original_image = frame.copy()
+            
+            # 将帧交给处理线程
+            self.processing_thread.set_frame(frame)
+            
+            # 快速显示原始帧，不等待处理结果
+            self._fast_show_original(frame)
+            
+        except Exception as e:
+            error_msg = f"帧接收错误: {str(e)}"
+            self.update_status(error_msg)
+            print(f"[Camera3Widget] {error_msg}")
+
+    def _fast_show_original(self, frame):
+        """快速显示原始帧，减少延迟"""
+        try:
             # 颜色空间转换（BGR->RGB）
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             # 转换为QImage
@@ -700,9 +770,18 @@ class Camera3Widget(QWidget):
             )
             self.label1.setPixmap(pixmap)
         except Exception as e:
-            error_msg = f"帧处理错误: {str(e)}"
-            self.update_status(error_msg)
-            print(f"[Camera3Widget] {error_msg}")
+            print(f"快速显示错误: {str(e)}")
+
+    def handle_recording(self, frame):
+        """处理录像逻辑，只在主线程做简单操作"""
+        if self.is_recording and self.video_writer and self.video_params:
+            try:
+                # 确保帧尺寸与录像参数一致
+                if (frame.shape[1], frame.shape[0]) != (self.video_params["width"], self.video_params["height"]):
+                    frame = cv2.resize(frame, (self.video_params["width"], self.video_params["height"]))
+                self.video_writer.write(frame)
+            except Exception as e:
+                print(f"录像写入错误: {str(e)}")
 
     # 录像相关函数
     def start_recording(self):
@@ -720,7 +799,10 @@ class Camera3Widget(QWidget):
             
         try:
             current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-            self.video_filename = f"./Saved_Files/Cam3/Cam3_recording_{current_time}.mp4"
+            # 创建保存目录
+            save_dir = "./Saved_Files/Cam3"
+            os.makedirs(save_dir, exist_ok=True)
+            self.video_filename = f"{save_dir}/Cam3_recording_{current_time}.mp4"
             
             # 使用预存的视频参数（已校验）
             width = self.video_params["width"]
@@ -781,58 +863,52 @@ class Camera3Widget(QWidget):
         self.codec_label.setText(codec_str)
         print(f"[参数更新] 分辨率: {params['width']}x{params['height']}, FPS: {params['fps']}, 编码: {codec_str}")
 
-    def process_frame(self, frame):
+    def _on_processed(self, results):
+        """处理图像处理线程返回的结果"""
         try:
-            # 校验帧尺寸是否合法
-            if frame is None or frame.size == 0:
-                raise ValueError("空帧，无法处理")
-                
-            height, width = frame.shape[:2]
-            # 录像时写入帧
-            if self.is_recording and self.video_writer:
-                # 确保帧尺寸与录像参数一致
-                if (frame.shape[1], frame.shape[0]) != (self.video_params["width"], self.video_params["height"]):
-                    frame = cv2.resize(frame, (self.video_params["width"], self.video_params["height"]))
-                self.video_writer.write(frame)
-                
-            self.last_original_image = frame.copy()
+            frame, spots_output, heatmap = results
+            self.last_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # 图像处理
-            gray, blur = preprocess_image_cv(frame)
-            spots_output = detect_spots(frame, self.algo_type)
-            heatmap = energy_distribution(gray)
-            self.last_gray = gray
-            
-            self.image_signal.emit((frame, spots_output, heatmap))
+            # 显示处理后的图像
+            self.show_cv_image(self.label2, spots_output)
+            self.show_cv_image(self.label3, heatmap)
             
         except Exception as e:
-            error_msg = f"帧处理错误: {str(e)}"
+            error_msg = f"处理结果显示错误: {str(e)}"
             self.update_status(error_msg)
 
     def show_cv_image(self, label, img):
+        """优化的图像显示函数"""
         try:  
-            # 确保图像尺寸合法
-            height, width = img.shape[:2]
-            if width > 4096 or height > 2160:
-                scale = min(label.width()/width, label.height()/height)
-                img = cv2.resize(img, (int(width*scale), int(height*scale)))
-            
-            if len(img.shape) == 2:
-                bytes_per_line = width
-                q_img = QImage(img.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
-            else:
-                rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                height, width, channels = rgb_img.shape
-                bytes_per_line = channels * width
-                q_img = QImage(rgb_img.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            if img is None or img.size == 0:
+                return
                 
+            # 获取标签尺寸
+            label_width = label.width()
+            label_height = label.height()
+            
+            # 图像尺寸
+            height, width = img.shape[:2]
+            
+            # 计算缩放比例
+            scale = min(label_width / width, label_height / height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            
+            # 缩放图像以提高显示效率
+            img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            
+            # 根据图像类型转换为QImage
+            if len(img.shape) == 2:  # 灰度图
+                q_img = QImage(img.data, new_width, new_height, new_width, QImage.Format_Grayscale8)
+            else:  # 彩色图
+                rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                q_img = QImage(rgb_img.data, new_width, new_height, new_width * 3, QImage.Format_RGB888)
+                
+            # 显示图像
             pixmap = QPixmap.fromImage(q_img)
-            scaled_pixmap = pixmap.scaled(
-                label.width(), label.height(), 
-                Qt.KeepAspectRatio, 
-                Qt.SmoothTransformation
-            )
-            label.setPixmap(scaled_pixmap)
+            label.setPixmap(pixmap)
+            
         except Exception as e:
             self.update_status(f"图像显示错误: {str(e)}")
 
@@ -896,6 +972,12 @@ class Camera3Widget(QWidget):
         self.gen_3d_thread.finished.connect(self.show3d_finished)
         self.gen_3d_thread.start()
 
+    def _on_algo_changed(self, algo_type):
+        """算法类型改变时更新"""
+        self.algo_type = algo_type
+        self.processing_thread.set_algo_type(algo_type)
+        print(f"算法类型已切换为: {algo_type}")
+
     # 串口控制函数
     def connect_serial(self):
         """连接串口"""
@@ -928,7 +1010,6 @@ class Camera3Widget(QWidget):
         self.set_integration_btn.setEnabled(False)
         self.set_fps_btn.setEnabled(False)
 
-    # 以下方法在原始代码中可能缺失实现，这里补充以确保完整性
     def tele_focus(self):
         """调焦+"""
         if self.controller:
@@ -987,16 +1068,53 @@ class Camera3Widget(QWidget):
 
     def save_all(self):
         """保存全部数据"""
-        # 实现保存逻辑
-        self.update_status("正在保存数据...")
-        # 这里添加保存代码
-        self.update_status("数据保存完成")
+        # 创建保存目录
+        save_dir = "./Saved_Files/Cam3"
+        os.makedirs(save_dir, exist_ok=True)
+        
+        current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        try:
+            if self.last_original_image is not None:
+                orig_path = f"{save_dir}/Cam3_original_{current_time}.png"
+                cv2.imwrite(orig_path, self.last_original_image)
+                
+            if self.last_gray is not None:
+                gray_path = f"{save_dir}/Cam3_gray_{current_time}.png"
+                cv2.imwrite(gray_path, self.last_gray)
+                
+            if self.last_3d_image is not None:
+                img3d_path = f"{save_dir}/Cam3_3d_{current_time}.png"
+                cv2.imwrite(img3d_path, self.last_3d_image)
+                
+            self.update_status(f"数据保存完成，路径: {save_dir}")
+        except Exception as e:
+            self.update_status(f"数据保存失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"保存失败: {str(e)}")
 
     def open_parameter_calculation_window(self):
         """打开参数计算窗口"""
         self.update_status("已打开激光参数计算器")
         self.param_window = ParameterCalculationWindow()
         self.param_window.show()
+
+    def closeEvent(self, event):
+        """窗口关闭时清理资源"""
+        # 停止相机线程
+        if self.camera_thread:
+            self.camera_thread.stop_thread()
+        
+        # 停止图像处理线程
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.processing_thread.stop()
+        
+        # 确保录像已停止
+        if self.is_recording:
+            self.stop_recording()
+            
+        # 断开串口连接
+        self.disconnect_serial()
+        
+        event.accept()
 
 
     def show_3d_image(self):

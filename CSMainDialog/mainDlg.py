@@ -966,7 +966,7 @@ class main_Dialog(QWidget):
 
         top_menu_layout.addStretch()
 
-        title_label = QLabel("光斑识别系统 v1.0")
+        title_label = QLabel("光斑识别系统 v2.0")
         title_label.setStyleSheet("color: #ecf0f1; font-size: 14pt; font-weight: bold; padding: 8px;")
         top_menu_layout.addWidget(title_label)
 
@@ -996,16 +996,16 @@ class main_Dialog(QWidget):
         self.pbDisconnect = create_function_btn('🔌 断开连接', self.camDisconnect, False)
         self.pbPlay = create_function_btn('▶ 开始', self.camPlay, False)
         self.pbStop = create_function_btn('⏹ 停止', self.camStop, False)
-        self.pbTree = create_function_btn('🌳 GenICam 树', self.camTree, False)
-        self.pbAction = create_function_btn('⚡ 执行动作', self.camAction, True)
-        self.pbSaveLog = create_function_btn('💾 保存日志', self.save_log, True)
-        self.pbCropImage = create_function_btn('✂️ 裁切图像', self.crop_image, False)
-        self.pbShow3D = create_function_btn('📊 显示 3D', self.show_3d_image, True)
-        self.pbSaveAll = create_function_btn('💿 保存全部', self.save_all, True)
-        self.pbParameterCalculation = create_function_btn('📐 参数计算',
+        self.pbTree = create_function_btn('GenICam 树', self.camTree, False)
+        self.pbAction = create_function_btn('执行动作', self.camAction, True)
+        self.pbSaveLog = create_function_btn('保存日志', self.save_log, True)
+        self.pbCropImage = create_function_btn('裁切图像', self.crop_image, False)
+        self.pbShow3D = create_function_btn('显示 3D', self.show_3d_image, True)
+        self.pbSaveAll = create_function_btn('保存全部', self.save_all, True)
+        self.pbParameterCalculation = create_function_btn('参数计算',
                                                           self.open_parameter_calculation_window, True)
-        self.pbImport = create_function_btn('🖼 导入图片', self.toggle_import_mode, True)
-        self.pbRecord = create_function_btn('🎥 录制视频', self.toggle_record, False)
+        self.pbImport = create_function_btn('导入图片', self.toggle_import_mode, True)
+        self.pbRecord = create_function_btn('录制视频', self.toggle_record, False)
 
 
         control_layout.addWidget(self.pbConnect)
@@ -1064,7 +1064,7 @@ class main_Dialog(QWidget):
         settings_group = QGroupBox("相机设置")
         settings_layout = QGridLayout(settings_group)
 
-        self.pbAutoAdjust = create_function_btn('🔄 Auto Adjust', self.auto_adjust)
+        self.pbAutoAdjust = create_function_btn('一键测量', self.auto_adjust)
         self.pbAutoAdjust.setEnabled(False)
         settings_layout.addWidget(self.pbAutoAdjust, 0, 0, 1, 2)
 
@@ -1078,15 +1078,15 @@ class main_Dialog(QWidget):
         self.gain_input.setPlaceholderText('输入增益')
         settings_layout.addWidget(self.gain_input, 2, 1)
 
-        self.pbConfirmSettings = create_function_btn('✅ 确认设置', self.confirm_settings)
+        self.pbConfirmSettings = create_function_btn('确认设置', self.confirm_settings)
         self.pbConfirmSettings.setEnabled(False)
         settings_layout.addWidget(self.pbConfirmSettings, 3, 0, 1, 2)
 
-        self.pbSaveSettings = create_function_btn('💾 保存参数', self.save_camera_settings)
+        self.pbSaveSettings = create_function_btn('保存参数', self.save_camera_settings)
         self.pbSaveSettings.setEnabled(False)
         settings_layout.addWidget(self.pbSaveSettings, 4, 0, 1, 2)
 
-        self.pbLoadSettings = create_function_btn('📂 加载参数', self.load_camera_settings)
+        self.pbLoadSettings = create_function_btn('加载参数', self.load_camera_settings)
         self.pbLoadSettings.setEnabled(False)
         settings_layout.addWidget(self.pbLoadSettings, 5, 0, 1, 2)
 

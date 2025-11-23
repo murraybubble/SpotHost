@@ -245,7 +245,12 @@ class ParameterCalculationWindow(QDialog):
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
 
-
+      # ------------------ 定时器槽函数 ------------------
+    def update_angles_periodically(self):
+        """每秒刷新光斑夹角"""
+        if self.angles_active and all([self.center_A, self.center_B, self.center_C]):
+            self.update_angles()  # 调用更新夹角和表格
+            
     def update_laser_centers(self, centers, transmission_distance):
         if len(centers) < 3:
             return
@@ -254,7 +259,7 @@ class ParameterCalculationWindow(QDialog):
 
         def calc_angle(p1, p2):
             b = ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**0.5
-            return b / transmission_distance
+            return b / self.transmission_distance
 
         angle_A_B = calc_angle(self.center_A, self.center_B)
         angle_B_C = calc_angle(self.center_B, self.center_C)

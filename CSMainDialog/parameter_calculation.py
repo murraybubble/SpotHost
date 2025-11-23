@@ -34,21 +34,16 @@ def calculate_quality_factor(actual_divergence, ideal_divergence):
 class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
-
         self.setWindowTitle('激光参数计算器')
         self.setMinimumSize(963, 760)
-        self.layout = QVBoxLayout(self)  
-
-        self.layout.setContentsMargins(20, 5, 20, 20)
-        self.layout.setSpacing(15)
-
-        # -------------------------------
-        # 新增：三路光斑中心 (x,y)
-        # -------------------------------
         self.center_A = None
         self.center_B = None
         self.center_C = None
+        self.layout = QVBoxLayout(self)  
+        self.layout.setContentsMargins(20, 5, 20, 20)
+        self.layout.setSpacing(15)
         
+
         self.title_label = QLabel("激光参数计算器")
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 25px; font-weight: bold; color: #2E3A59;")
@@ -192,27 +187,27 @@ class ParameterCalculationWindow(QDialog):
         self.layout.addWidget(self.submit_button)
         self.setLayout(self.layout)
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_table)
-        self.timer.start(1000)
+        # self.timer = QTimer(self)
+        # self.timer.timeout.connect(self.update_table)
+        # self.timer.start(1000)
 
 
-    def update_table(self):
-        angle_A_B = 0.02
-        angle_B_C = 0.03
-        angle_C_A = 0.04
-        current_time = QTime.currentTime().toString('hh:mm:ss')
+    # def update_table(self):
+    #     angle_A_B = 0.02
+    #     angle_B_C = 0.03
+    #     angle_C_A = 0.04
+    #     current_time = QTime.currentTime().toString('hh:mm:ss')
 
-        row_position = self.table_widget.rowCount()
-        self.table_widget.insertRow(row_position)
+    #     row_position = self.table_widget.rowCount()
+    #     self.table_widget.insertRow(row_position)
 
-        self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
-        self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
-        self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
-        self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
+    #     self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
+    #     self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
+    #     self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
+    #     self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
 
-        self.table_widget.scrollToBottom()
-    
+    #     self.table_widget.scrollToBottom()
+
     def calculate_parameters(self):
         try:
             if not self.input_wavelength.text() or not self.input_aperture.text() or not self.input_spot_diameter.text() or not self.input_laser_power.text() or not self.input_transmission_distance.text() or not self.input_distance.text():
@@ -249,3 +244,33 @@ class ParameterCalculationWindow(QDialog):
 
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
+
+
+    def update_laser_centers(self, centers, transmission_distance):
+        if len(centers) < 3:
+            return
+
+        self.center_A, self.center_B, self.center_C = centers[:3]
+
+        def calc_angle(p1, p2):
+            b = ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**0.5
+            return b / transmission_distance
+
+        angle_A_B = calc_angle(self.center_A, self.center_B)
+        angle_B_C = calc_angle(self.center_B, self.center_C)
+        angle_C_A = calc_angle(self.center_C, self.center_A)
+
+        # 更新输出框
+        self.output_angle_A_B.setText(f"{angle_A_B:.3e} rad")
+        self.output_angle_B_C.setText(f"{angle_B_C:.3e} rad")
+        self.output_angle_C_A.setText(f"{angle_C_A:.3e} rad")
+
+        # 更新表格
+        current_time = QTime.currentTime().toString('hh:mm:ss')
+        row_position = self.table_widget.rowCount()
+        self.table_widget.insertRow(row_position)
+        self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
+        self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
+        self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
+        self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
+        self.table_widget.scrollToBottom()

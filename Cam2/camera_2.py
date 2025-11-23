@@ -183,8 +183,6 @@ class Camera2Thread(QThread):
             self.wait(2000)
         print(f"[Camera2Thread] 线程彻底停止 (标识: {self.thread_tag})")
 
-<<<<<<< HEAD
-=======
 
 class ImageProcessingWorker(QRunnable):
     """图像处理工作单元，用于线程池"""
@@ -246,7 +244,6 @@ class Generate3DWorker(QRunnable):
         self.is_running = False
 
 
->>>>>>> 0ffcd44d0d06a3d6980ae032835a3fbc5cc8d13c
 class Camera2Widget(QWidget):
     """相机界面（包含控制按钮+串口选择+日志窗口+图像处理功能）"""
     image_signal = pyqtSignal(object)

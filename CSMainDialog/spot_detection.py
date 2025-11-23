@@ -86,6 +86,8 @@ def detect_and_draw_spots(
         used_mask = np.logical_or(used_mask, spot_mask.astype(bool))
         detected_spots.append((x, y, radius))
 
+        detected_spots_xy = [(x, y) for (x, y, r) in detected_spots[:3]]  # 只取前3个光斑中心
+        
     if len(detected_spots) > 0:
         msg = "检测到光斑位置（x, y, radius）：\n"
         for i, (x, y, r) in enumerate(detected_spots):
@@ -100,7 +102,8 @@ def detect_and_draw_spots(
         else:
             print("未检测到符合条件的光斑。")
 
-    return output
+    
+    return output,detected_spots_xy
 
 
 def energy_distribution(gray):

@@ -42,10 +42,18 @@ class ParameterCalculationWindow(QDialog):
         self.layout.setContentsMargins(20, 5, 20, 20)
         self.layout.setSpacing(15)
 
+        # -------------------------------
+        # 新增：三路光斑中心 (x,y)
+        # -------------------------------
+        self.center_A = None
+        self.center_B = None
+        self.center_C = None
+        
         self.title_label = QLabel("激光参数计算器")
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 25px; font-weight: bold; color: #2E3A59;")
         self.layout.addWidget(self.title_label)
+
 
         top_layout = QHBoxLayout()
         self.image_label = QLabel(self)

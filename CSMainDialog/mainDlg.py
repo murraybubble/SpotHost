@@ -103,9 +103,16 @@ class main_Dialog(QWidget):
             QMessageBox.information(self, "提示", "日志为空，无需保存")
             return
 
-        options = QFileDialog.Options()
+         # 自动生成文件名
+        timestamp = time.strftime("%Y-%m-%d_%H-%M", time.localtime())
+        default_filename = f"日志：相机1 时间：{timestamp}.txt"
+
+    # 打开保存对话框，默认文件名已填好
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "保存日志", "", "文本文件 (*.txt);;所有文件 (*)", options=options
+        self, 
+        "保存日志", 
+        default_filename,        # ← 默认填写文件名
+        "文本文件 (*.txt);;所有文件 (*)"
         )
 
         if file_path:

@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QDialog, QSlider, QMessageBox, QSpinBox, QDialogButtonBox,
                             QTextEdit, QComboBox, QStackedWidget, QTableWidget, 
                             QTableWidgetItem, QLineEdit, QGridLayout, QButtonGroup,
-                            QFileDialog, QSizePolicy, QSpacerItem)
+                            QFileDialog, QSizePolicy, QSpacerItem,QFileDialog)
 
 current_script_path = os.path.abspath(__file__)
 parent_dir = os.path.dirname(os.path.dirname(current_script_path))
@@ -172,7 +172,6 @@ class Camera2Thread(QThread):
             self.wait(2000)
         print(f"[Camera2Thread] 线程彻底停止 (标识: {self.thread_tag})")
 
-
 class Camera2Widget(QWidget):
     """相机界面（包含控制按钮+串口选择+日志窗口+图像处理功能）"""
     image_signal = pyqtSignal(object)
@@ -205,6 +204,41 @@ class Camera2Widget(QWidget):
         self.image_signal.connect(self._update_display)
         self.show3d_finished.connect(self._on_show3d_finished)
         self.cropped_image_signal.connect(self._process_cropped_image)
+
+    #日志保存
+    def add_log(self, message):
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        self.log_text_edit.append(f"[{timestamp}] {message}")
+        self.log_text_edit.verticalScrollBar().setValue(
+            self.log_text_edit.verticalScrollBar().maximum()
+        )
+        
+    def save_log(self):
+        if not self.log_text_edit.toPlainText():
+            QMessageBox.information(self, "提示", "日志为空，无需保存")
+            return
+
+         # 自动生成文件名
+        timestamp = time.strftime("%Y-%m-%d_%H-%M", time.localtime())
+        default_filename = f"日志：相机2 时间：{timestamp}.txt"
+
+    # 打开保存对话框，默认文件名已填好
+        file_path, _ = QFileDialog.getSaveFileName(
+        self, 
+        "保存日志", 
+        default_filename,        # ← 默认填写文件名
+        "文本文件 (*.txt);;所有文件 (*)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.log_text_edit.toPlainText())
+                self.add_log(f"日志已保存至: {file_path}")
+                QMessageBox.information(self, "成功", f"日志已保存至:\n{file_path}")
+            except Exception as e:
+                self.add_log(f"日志保存失败: {str(e)}")
+                QMessageBox.critical(self, "错误", f"保存失败:\n{str(e)}")
 
     def init_serial_connection(self):
         if self.controller.connect():
@@ -273,11 +307,17 @@ class Camera2Widget(QWidget):
         self.param_calc_btn.setObjectName("control_btn")
         self.param_calc_btn.setMinimumHeight(40)
         self.param_calc_btn.clicked.connect(self.open_parameter_calculation_window)
+
+        self.save_log_btn = QPushButton("💾 保存日志")
+        self.save_log_btn.setObjectName("control_btn")
+        self.save_log_btn.setMinimumHeight(40)
+        self.save_log_btn.clicked.connect(self.save_log)
         
         top_layout.addWidget(self.crop_btn)
         top_layout.addWidget(self.show3d_btn)
         top_layout.addWidget(self.save_all_btn)
         top_layout.addWidget(self.param_calc_btn)
+        top_layout.addWidget(self.save_log_btn)
         
         top_layout.addStretch()
         main_layout.addWidget(top_toolbar)
@@ -352,7 +392,6 @@ class Camera2Widget(QWidget):
         
         hbox1.addWidget(self.scene_comp_btn)
         hbox1.addWidget(self.shutter_comp_btn)
-        
         hbox2 = QHBoxLayout()
         self.tele_btn = QPushButton("远焦+")
         self.tele_btn.setObjectName("control_btn")
@@ -553,7 +592,7 @@ class Camera2Widget(QWidget):
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         self.log_text_edit.append(f"[{timestamp}] {message}")
         self.log_text_edit.verticalScrollBar().setValue(
-            self.log_text_edit.verticalScrollBar().maximum()
+        self.log_text_edit.verticalScrollBar().maximum()
         )
         print(f"[状态更新] {message}")
 

@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QDialog, QSlider, QMessageBox, QSpinBox, QDialogButtonBox,
                             QTextEdit, QComboBox, QStackedWidget, QTableWidget, 
                             QTableWidgetItem, QLineEdit, QGridLayout, QButtonGroup,
-                         QSpacerItem, QRadioButton, QScrollArea)
+                         QSpacerItem, QRadioButton, QScrollArea,QFileDialog)
 
 
 # 添加maindlg的系统路径
@@ -35,7 +35,7 @@ class Camera3Thread(QThread):
     frame_signal = pyqtSignal(np.ndarray)
     status_signal = pyqtSignal(str)
     param_signal = pyqtSignal(dict)
-    
+
     def __init__(self, rtsp_url):
         super().__init__()
         self.rtsp_url = rtsp_url
@@ -171,7 +171,7 @@ class Camera3Widget(QWidget):
         self.last_gray = None
         self.last_3d_image = None
         self.cropped_image = None
-        
+
         # 录像相关变量
         self.is_recording = False
         self.video_writer = None
@@ -184,6 +184,42 @@ class Camera3Widget(QWidget):
         self.image_signal.connect(self._update_display)
         self.show3d_finished.connect(self._on_show3d_finished)
         self.cropped_image_signal.connect(self._process_cropped_image)
+   
+    #日志保存
+    def add_log(self, message):
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        self.log_text_edit.append(f"[{timestamp}] {message}")
+        self.log_text_edit.verticalScrollBar().setValue(
+            self.log_text_edit.verticalScrollBar().maximum()
+        )
+        
+    def save_log(self):
+        if not self.log_text_edit.toPlainText():
+            QMessageBox.information(self, "提示", "日志为空，无需保存")
+            return
+
+         # 自动生成文件名
+        timestamp = time.strftime("%Y-%m-%d_%H-%M", time.localtime())
+        default_filename = f"日志：相机3 时间：{timestamp}.txt"
+
+    # 打开保存对话框，默认文件名已填好
+        file_path, _ = QFileDialog.getSaveFileName(
+        self, 
+        "保存日志", 
+        default_filename,        # ← 默认填写文件名
+        "文本文件 (*.txt);;所有文件 (*)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.log_text_edit.toPlainText())
+                self.add_log(f"日志已保存至: {file_path}")
+                QMessageBox.information(self, "成功", f"日志已保存至:\n{file_path}")
+            except Exception as e:
+                self.add_log(f"日志保存失败: {str(e)}")
+                QMessageBox.critical(self, "错误", f"保存失败:\n{str(e)}")
+
 
     def init_serial_connection(self):
         if self.controller.connect():
@@ -205,7 +241,7 @@ class Camera3Widget(QWidget):
         self.start_btn.setObjectName("func_btn")
         self.start_btn.setMinimumHeight(40)
         self.start_btn.clicked.connect(self.start_or_resume_camera)
-        
+
         self.stop_btn = QPushButton("⏹ 暂停视频流")
         self.stop_btn.setObjectName("func_btn")
         self.stop_btn.setMinimumHeight(40)
@@ -249,12 +285,19 @@ class Camera3Widget(QWidget):
         self.param_calc_btn.setObjectName("control_btn")
         self.param_calc_btn.setMinimumHeight(40)
         self.param_calc_btn.clicked.connect(self.open_parameter_calculation_window)
+
+        self.save_log_btn = QPushButton("💾 保存日志")
+        self.save_log_btn.setObjectName("control_btn")
+        self.save_log_btn.setMinimumHeight(40)
+        self.save_log_btn.clicked.connect(self.save_log)
+
         
         top_layout.addWidget(self.crop_btn)
         top_layout.addWidget(self.show3d_btn)
         top_layout.addWidget(self.save_all_btn)
         top_layout.addWidget(self.param_calc_btn)
-        
+        top_layout.addWidget(self.save_log_btn)
+
         # 算法选择（顶部）
         algo_label = QLabel("检测算法:")
         algo_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
@@ -444,6 +487,17 @@ class Camera3Widget(QWidget):
         param_layout.addRow("编码格式:", self.codec_label)
         self.param_group.setLayout(param_layout)
         left_layout.addWidget(self.param_group)
+    
+    
+      # 系统日志 - 调整高度，使其不占用过多空间
+        log_group = QGroupBox("系统日志")
+        log_layout = QVBoxLayout()
+        self.log_text_edit = QTextEdit()
+        self.log_text_edit.setMaximumHeight(120)  # 从150调整为120
+        self.log_text_edit.setReadOnly(True)
+        log_layout.addWidget(self.log_text_edit)
+        log_group.setLayout(log_layout)
+        left_layout.addWidget(log_group)
         
         # 填充剩余空间
         left_layout.addStretch()
@@ -559,15 +613,26 @@ class Camera3Widget(QWidget):
         self.setMinimumSize(1280, 720)  # 适合1080p显示器的最小尺寸
         print(f"[Camera3Widget] UI初始化完成")
 
-    def update_status(self, message):
-        """更新状态信息"""
+    # def update_status(self, message):
+    #     """更新状态信息"""
+    #     self.status_label.setText(message)
+    #     print(f"[状态更新] {message}")
+    #日志系统控件
+    def update_status(self, message, level="info"):
         self.status_label.setText(message)
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        self.log_text_edit.append(f"[{timestamp}] {message}")
+        self.log_text_edit.verticalScrollBar().setValue(
+        self.log_text_edit.verticalScrollBar().maximum()
+        )
         print(f"[状态更新] {message}")
+
 
     def start_or_resume_camera(self):
         """开始或恢复视频流（统一处理）"""
         print(f"[Camera3Widget] 点击开始/恢复按钮")
-        
+
+
         # 情况1：线程未创建（首次启动）
         if not self.camera_thread:
             self.camera_thread = Camera3Thread(self.rtsp_url)
@@ -578,6 +643,8 @@ class Camera3Widget(QWidget):
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.record_start_btn.setEnabled(True)  # 启动后允许录像
+            #日志1
+            self.update_status(f"首次启动视频流 (线程标识: {self.camera_thread.thread_tag})")
             print(f"[Camera3Widget] 首次启动视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         # 情况2：线程已创建且处于暂停状态
@@ -586,10 +653,14 @@ class Camera3Widget(QWidget):
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.record_start_btn.setEnabled(True)
+            #日志2
+            self.update_status(f"恢复视频流 (线程标识: {self.camera_thread.thread_tag})")
             print(f"[Camera3Widget] 恢复视频流 (线程标识: {self.camera_thread.thread_tag})")
         
         # 情况3：线程已在运行（忽略重复点击）
         else:
+            #日志3
+            self.update_status("视频流已在运行，忽略操作", level="warn")
             print(f"[Camera3Widget] 视频流已在运行，忽略操作")
 
     def pause_camera(self):
@@ -604,6 +675,8 @@ class Camera3Widget(QWidget):
         self.record_start_btn.setEnabled(False)  # 暂停时不允许录像
         if self.is_recording:
             self.stop_recording()  # 暂停时自动停止录像
+            #日志4
+            self.update_status(f"暂停视频流 (线程标识: {self.camera_thread.thread_tag})")
         print(f"[Camera3Widget] 暂停视频流 (线程标识: {self.camera_thread.thread_tag})")
 
     def update_frame(self, frame):
@@ -802,6 +875,7 @@ class Camera3Widget(QWidget):
             QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
             return
             
+            
         self.update_status("正在生成3D图像...")
         class Generate3DThread(QThread):
             finished = pyqtSignal(np.ndarray)
@@ -920,8 +994,30 @@ class Camera3Widget(QWidget):
 
     def open_parameter_calculation_window(self):
         """打开参数计算窗口"""
+        self.update_status("已打开激光参数计算器")
         self.param_window = ParameterCalculationWindow()
         self.param_window.show()
+
+
+    def show_3d_image(self):
+      if self.last_gray is None:
+            QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
+            return
+      self.update_status("正在生成3D图像...")
+      class Generate3DThread(QThread):
+            finished = pyqtSignal(np.ndarray)
+
+            def __init__(self, gray_img):
+                super().__init__()
+                self.gray_img = gray_img
+                
+            def run(self):
+                try:
+                    image_3d = generate_3d_image(self.gray_img)
+                    self.finished.emit(image_3d)
+                except Exception as e:
+                    print(f"生成3D图像错误: {str(e)}")
+                    self.finished.emit(None)
 
 
 if __name__ == "__main__":

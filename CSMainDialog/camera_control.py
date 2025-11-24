@@ -7,7 +7,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-# 隐藏 tkinter 主窗口1234
+# 隐藏 tkinter 主窗口
 root = tk.Tk()
 root.withdraw()  # 隐藏主窗口
 

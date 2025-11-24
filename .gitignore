@@ -8,6 +8,9 @@ Saved_Images/
 # 如果未来有更多自动保存文件夹
 Saved_Files/
 
+# 忽略 IpxCameraSDK 文件夹
+IpxCameraSDK/
+
 # Python 缓存与临时文件
 __pycache__/
 *.pyc
@@ -28,3 +31,5 @@ dist/
 *.swp
 
 camera_setting/
+
+

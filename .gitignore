@@ -9,7 +9,7 @@ Saved_Images/
 Saved_Files/
 
 # 忽略 IpxCameraSDK 文件夹
-IpxCameraSDK/
+Imperx Camera SDK/
 
 # Python 缓存与临时文件
 __pycache__/

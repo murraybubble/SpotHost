@@ -27,13 +27,28 @@ if platform.system() == 'Windows':
 else:
     import libIpxCameraApiPy as IpxCameraApiPy
 
-def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
-    # （保持原函数不变）
+
+
+def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percentile=99.0, min_bright_threshold=50.0):
+    """
+    自动调节曝光和增益，使图像中第 percentile% 最亮的像素平均亮度接近 target。
+    特别适合：有局部光斑/激光点、背景黑暗的场景（避免过曝噪声）
+    修改：如果初始图像中第 percentile% 最亮的像素平均亮度低于 min_bright_threshold，则认为没有光斑，不进行调节。
+
+    参数:
+        target: 目标亮度 (建议 180~220 for 8bit)
+        tol: 容差
+        max_iter: 最大迭代次数
+        percentile: 使用第几个百分位的亮度作为判断依据，推荐 99.0 ~ 99.9
+                    99.0  → 最亮的 1% 像素的平均值
+                    99.9  → 最亮的 0.1% 像素（更严格，只看最亮区域）
+        min_bright_threshold: 如果初始亮度低于此阈值，则认为没有光斑，不调节（默认50.0）
+    """
     pars = camera.GetCameraParameters()
     parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
     parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
     if parExp is None or parG is None:
-        print("错误：相机不支持 ExposureTimeRaw 或 GainRaw 参数（无法自动调节）")
+        print("错误：相机不支持 ExposureTimeRaw 或 GainRaw 参数")
         return False
 
     expMin, expMax = parExp.GetMin()[1], parExp.GetMax()[1]
@@ -43,15 +58,15 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
         acqMode = pars.GetEnum("AcquisitionMode")
         if acqMode:
             acqMode.SetValueStr("Continuous")
-            print("采集模式设置为 Continuous")
-    except Exception as e:
-        print("设置 Continuous 模式失败:", e)
+    except:
+        pass
 
     stream = camera.GetStreamByIndex(0)
     if stream is None:
         print("错误：无法获取数据流")
         return False
 
+    buffers = []
     try:
         stream.FlushBuffers(stream.Flush_AllDiscard)
         bufSize = stream.GetBufferSize()
@@ -64,35 +79,80 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
         pars.ExecuteCommand("AcquisitionStart")
         time.sleep(0.5)
 
+        # 先抓取一帧初始图像进行光斑检测
+        buf = stream.GetBuffer(2000)
+        if buf is None:
+            print("初始图像抓取失败，无法检测光斑")
+            return False
+
+        # 转为 numpy 图像
+        img = np.frombuffer(buf.GetBufferPtr(), dtype=np.uint8).reshape(
+            buf.GetHeight(), buf.GetWidth())
+
+        # 计算初始高百分位亮度
+        initial_bright_value = np.percentile(img, percentile)
+        print(f"初始检测: 第 {percentile}% 亮度 = {initial_bright_value:.2f}")
+
+        stream.QueueBuffer(buf)
+
+        # 如果初始亮度低于阈值，认为没有光斑，不调节
+        if initial_bright_value < min_bright_threshold:
+            print(f"初始亮度 {initial_bright_value:.2f} < {min_bright_threshold}，无光斑检测到，不进行调节")
+            return True  # 返回True表示不调节，但操作成功（保持不变）
+
+        # 如果有光斑，继续调节
+        current_exp = parExp.GetValue()[1]
+        current_gain = parG.GetValue()[1]
+
         for i in range(max_iter):
-            buf = stream.GetBuffer(1000)
+            buf = stream.GetBuffer(2000)
             if buf is None:
-                print(f"第 {i} 次调节时未获取到 buffer（超时）")
+                print(f"第 {i + 1} 次未抓到图像")
                 continue
 
-            img = np.frombuffer(buf.GetBufferPtr(), dtype=np.uint8).reshape(buf.GetHeight(), buf.GetWidth())
-            brightness = float(np.mean(img))
-            print(f"迭代 {i}: 平均亮度 = {brightness:.2f}")
+            # 转为 numpy 图像
+            img = np.frombuffer(buf.GetBufferPtr(), dtype=np.uint8).reshape(
+                buf.GetHeight(), buf.GetWidth())
 
-            if abs(brightness - target) <= tol:
-                print("亮度已在目标范围内，停止调节。")
+            # 关键修改：使用高百分位亮度，而不是全局平均
+            bright_value = np.percentile(img, percentile)
+            print(f"迭代 {i + 1}: 第 {percentile}% 亮度 = {bright_value:.2f}  "
+                  f"(曝光={current_exp:.1f}, 增益={current_gain:.2f})")
+
+            # 判断是否满足目标
+            if abs(bright_value - target) <= tol:
+                print(f"已达到目标亮度范围 [{target - tol}, {target + tol}]，停止调节")
                 stream.QueueBuffer(buf)
                 break
 
-            factor = target / (brightness + 1e-6)
-            newExp = min(max(parExp.GetValue()[1] * factor, expMin), expMax)
-            parExp.SetValue(newExp)
+            # 计算调节倍率（避免除零）
+            factor = target / (bright_value + 1e-6)
 
-            if (brightness < target and newExp >= expMax * 0.98) or (brightness > target and newExp <= expMin * 1.02):
-                newG = min(max(parG.GetValue()[1] * factor, gainMin), gainMax)
-                parG.SetValue(newG)
+            # 先调节曝光（优先）
+            new_exp = np.clip(current_exp * factor, expMin, expMax)
+            parExp.SetValue(new_exp)
 
-            print(f"设置后：曝光={parExp.GetValue()[1]:.1f}, 增益={parG.GetValue()[1]:.2f}")
+            # 如果曝光已到上限但仍太暗，才动增益；如果过亮则先降曝光再降增益
+            if bright_value < target - tol and new_exp >= expMax * 0.98:
+                # 还暗，且曝光已近上限 → 增加增益
+                new_gain = np.clip(current_gain * factor * 1.2, gainMin, gainMax)  # 稍微多补一点
+                parG.SetValue(new_gain)
+                current_gain = new_gain
+            elif bright_value > target + tol and new_exp <= expMin * 1.02:
+                # 太亮了，且曝光已近下限 → 降低增益
+                new_gain = np.clip(current_gain / max(factor, 1.1), gainMin, gainMax)
+                parG.SetValue(new_gain)
+                current_gain = new_gain
+
+            current_exp = new_exp
             stream.QueueBuffer(buf)
-            time.sleep(0.1)
+            time.sleep(0.12)  # 给相机响应时间
+
+        else:
+            print("达到最大迭代次数，自动调节结束（可能未完全收敛）")
 
     except Exception as e:
-        print(f"自动调节过程中发生错误: {str(e)}")
+        print(f"自动调节异常: {e}")
         return False
     finally:
         try:
@@ -101,15 +161,16 @@ def AutoAdjustExposureGain(camera, target=170.0, tol=5.0, max_iter=8):
             for b in buffers:
                 stream.RevokeBuffer(b)
             stream.FlushBuffers(stream.Flush_AllDiscard)
-            print("自动调节结束，缓冲区已清理。")
+            print("自动调节完成，资源已释放")
         except Exception as e:
-            print(f"清理缓冲区或停止采集失败: {str(e)}")
-            return False
+            print(f"清理资源失败: {e}")
 
     return True
 
 def SetupExposure(camera, expValue):
-    # （保持原函数不变）
+    """
+    设置快门时间（ExposureTimeRaw），使用提供的 expValue。
+    """
     pars = camera.GetCameraParameters()
     if pars is None:
         print("错误：无法获取相机参数")
@@ -143,7 +204,9 @@ def SetupExposure(camera, expValue):
         return False
 
 def SetupGain(camera, gainValue):
-    # （保持原函数不变）
+    """
+    设置增益（GainRaw），使用提供的 gainValue。
+    """
     pars = camera.GetCameraParameters()
     if pars is None:
         print("错误：无法获取相机参数")
@@ -175,6 +238,8 @@ def SetupGain(camera, gainValue):
     except Exception as e:
         print(f'设置增益失败: {e}')
         return False
+
+
 
 def SaveExposureAndGain(camera):
     """

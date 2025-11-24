@@ -33,7 +33,7 @@ def _pre_check(img):
 # ================== A：标准多光斑 ==================
 def _algo_A(img, max_spots=3):
     gray = _pre_check(img)
-    if gray is None: return img          # 预处理失败，直接返原图
+    if gray is None: return img ,[]         # 预处理失败，直接返原图，修改1
     thresh_val = int(np.max(gray) * 0.85)
     _, binary = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
     if not np.count_nonzero(binary):
@@ -83,11 +83,11 @@ def _algo_A(img, max_spots=3):
         det += 1
     if not det:
         print(f"【检测错误 {ERR_NO_VALID_SPOT}】最终可画光斑数为 0")
-        return img
+        return img,[]#修改2
     # 控制台打印
     print("【光斑面积】", areas)
     print("【圆心坐标】", centers)
-    return out
+    return out,centers #返回光斑中心，修改3
 
 # ================== B：双光斑 ==================
 def _algo_B(img, max_spots=2):
@@ -147,10 +147,10 @@ def _algo_C(img, max_spots=1):
         used |= mask.astype(bool); det += 1
     if not det:
         print(f"【检测错误 {ERR_NO_VALID_SPOT}】最终可画光斑数为 0")
-        return img
+        return img,[] #修改4
     print("【光斑面积】", areas)
     print("【圆心坐标】", centers)
-    return out
+    return out,centers #修改5
 
 # ================== D：框选后 + 二次亮度校验 ==================
 def _algo_D(img, max_spots=1):

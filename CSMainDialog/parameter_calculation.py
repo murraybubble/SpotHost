@@ -36,14 +36,20 @@ class ParameterCalculationWindow(QDialog):
         super(ParameterCalculationWindow, self).__init__()
         self.setWindowTitle('激光参数计算器')
         self.setMinimumSize(963, 760)
+
+        self.latest_centers = []      # [(x1,y1),(x2,y2),(x3,y3)]
         self.center_A = None
         self.center_B = None
         self.center_C = None
+
+         # ---------- 新增：角度刷新控制 ----------
+        self.angles_active = False           # 点击计算后设为 True，定时器启动时生效
+        self.transmission_distance = None    # 由计算按钮读取并保存
+
         self.layout = QVBoxLayout(self)  
         self.layout.setContentsMargins(20, 5, 20, 20)
         self.layout.setSpacing(15)
         
-
         self.title_label = QLabel("激光参数计算器")
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 25px; font-weight: bold; color: #2E3A59;")
@@ -187,26 +193,10 @@ class ParameterCalculationWindow(QDialog):
         self.layout.addWidget(self.submit_button)
         self.setLayout(self.layout)
 
-        # self.timer = QTimer(self)
-        # self.timer.timeout.connect(self.update_table)
-        # self.timer.start(1000)
-
-
-    # def update_table(self):
-    #     angle_A_B = 0.02
-    #     angle_B_C = 0.03
-    #     angle_C_A = 0.04
-    #     current_time = QTime.currentTime().toString('hh:mm:ss')
-
-    #     row_position = self.table_widget.rowCount()
-    #     self.table_widget.insertRow(row_position)
-
-    #     self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
-    #     self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
-    #     self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
-    #     self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
-
-    #     self.table_widget.scrollToBottom()
+# ---------- 新增：角度刷新定时器（创建但不启动） ----------
+        self.angle_timer = QTimer(self)
+        self.angle_timer.timeout.connect(self.update_angles_periodically)
+        # 若需要别处停止定时器，可调用 self.angle_timer.stop()
 
     def calculate_parameters(self):
         try:
@@ -242,6 +232,21 @@ class ParameterCalculationWindow(QDialog):
             self.output_actual_divergence.setText(f"{actual_divergence:.3e} rad")
             self.output_quality_factor.setText(f"{quality_factor:.3e}")
 
+ # ---------- 新增：保存传输距离并启动定时器刷新角度（每秒） ----------
+            # 如果没有检测到三个光斑中心，则提醒用户先获取光斑
+            if len(self.latest_centers) < 3:
+                QMessageBox.warning(self, "提示", "尚未检测到三个光斑中心，无法计算激光夹角。请先让相机检测到三个光斑。")
+                return
+        
+            # 保存传输距离供定时器使用
+            self.transmission_distance = transmission_distance
+
+# 启动刷新（如果已经运行则先停止再启动，避免重复）
+            if self.angle_timer.isActive():
+                self.angle_timer.stop()
+            self.angles_active = True
+            self.angle_timer.start(1000)  # 每 1000 ms 刷新一次
+
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
 
@@ -250,12 +255,33 @@ class ParameterCalculationWindow(QDialog):
         """每秒刷新光斑夹角"""
         if self.angles_active and all([self.center_A, self.center_B, self.center_C]):
             self.update_angles()  # 调用更新夹角和表格
-            
+
     def update_laser_centers(self, centers, transmission_distance):
+        if centers is None:
+            return
+        
         if len(centers) < 3:
+            self.latest_centers = centers[:]   # 只保存，不计算
             return
 
+        # 只保存，不计算
+        self.latest_centers = centers[:3]
         self.center_A, self.center_B, self.center_C = centers[:3]
+
+        def update_angles(self):
+            """
+            使用 self.latest_centers 和 self.transmission_distance 计算夹角并更新输出框与表格。
+            这个函数由定时器每秒调用（当 angles_active=True 时）。
+            """
+        # 必要检查
+        if not self.angles_active:
+            return
+        if self.transmission_distance is None:
+            return
+        if len(self.latest_centers) < 3:
+            return
+
+        A, B, C = self.latest_centers
 
         def calc_angle(p1, p2):
             b = ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**0.5

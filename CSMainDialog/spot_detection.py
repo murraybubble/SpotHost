@@ -53,6 +53,8 @@ def detect_and_draw_spots(
 
     h, w = gray.shape[:2]
 
+    detected_spots_xy = []#默认0个光斑
+
     for i in range(len(spot_coords)):
         if len(detected_spots) >= max_spots:
             break
@@ -87,7 +89,7 @@ def detect_and_draw_spots(
         detected_spots.append((x, y, radius))
 
         detected_spots_xy = [(x, y) for (x, y, r) in detected_spots[:3]]  # 只取前3个光斑中心
-        
+
     if len(detected_spots) > 0:
         msg = "检测到光斑位置（x, y, radius）：\n"
         for i, (x, y, r) in enumerate(detected_spots):

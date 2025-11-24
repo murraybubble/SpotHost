@@ -1,5 +1,6 @@
 import sys
 import os
+import subprocess
 import platform
 import time
 from PyQt5.QtGui import *
@@ -22,7 +23,7 @@ from image_cropper import CropDialog
 from spot_algorithms import detect_spots
 from Cam2.camera_2 import Camera2Widget
 from Cam3.camera_3 import Camera3Widget
-
+from complete_version import ADCWindow
 if platform.system() == 'Windows':
     sys.path.append(os.environ['IPX_CAMSDK_ROOT'] + '/bin/win64_x64/')
     sys.path.append(os.environ['IPX_CAMSDK_ROOT'] + '/bin/win32_i86/')
@@ -793,6 +794,30 @@ class main_Dialog(QWidget):
         self.parameter_calculation_window.show()
         self.log("参数计算器已打开")
 
+    # def open_adc_window(self):
+    #     self.adc_window = ADCWindow()
+    #     self.adc_window.show()
+    #     self.adc_window.activateWindow()  # 激活窗口
+    #     self.log("点源探测器显示界面已打开")
+    def launch_independent_process(self):
+        """启动完全独立的进程"""
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            second_app_script = os.path.join(current_dir, "complete_version.py")
+            
+            if not os.path.exists(second_app_script):
+                QMessageBox.warning(self, "错误", "找不到第二个应用脚本")
+                return
+            
+            # 方法1：尝试使用pythonw.exe
+            pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
+            if os.path.exists(pythonw_exe):
+                subprocess.Popen([pythonw_exe, second_app_script])
+                return
+                
+        except Exception as e:
+            QMessageBox.critical(self, "启动失败", f"错误: {str(e)}")
+
     def switch_camera(self, index):
         current_widget = self.camera_stack.currentWidget()
         if hasattr(current_widget, 'stop_camera'):
@@ -957,6 +982,8 @@ class main_Dialog(QWidget):
         self.btn_camera1 = QPushButton("📷 相机1")
         self.btn_camera2 = QPushButton("📷 相机2")
         self.btn_camera3 = QPushButton("📷 相机3")
+        self.btn_fpga_detect = QPushButton("📻 点源探测")
+        self.btn_fpga_detect.setFixedHeight(36)
 
         for btn in [self.btn_camera1, self.btn_camera2, self.btn_camera3]:
             btn.setObjectName("menu_btn")
@@ -965,6 +992,7 @@ class main_Dialog(QWidget):
             top_menu_layout.addWidget(btn)
 
         top_menu_layout.addStretch()
+        top_menu_layout.addWidget(self.btn_fpga_detect)
 
         title_label = QLabel("光斑识别系统 v2.0")
         title_label.setStyleSheet("color: #ecf0f1; font-size: 14pt; font-weight: bold; padding: 8px;")
@@ -1155,6 +1183,7 @@ class main_Dialog(QWidget):
         self.btn_camera1.clicked.connect(lambda: self.switch_camera(0))
         self.btn_camera2.clicked.connect(lambda: self.switch_camera(1))
         self.btn_camera3.clicked.connect(lambda: self.switch_camera(2))
+        self.btn_fpga_detect.clicked.connect(self.launch_independent_process)
 
         self.setWindowTitle("光斑识别系统")
         self.setMinimumSize(1400, 900)

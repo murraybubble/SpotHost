@@ -156,7 +156,7 @@ def _algo_C(img, max_spots=1):
         return img #修改4
     print("【光斑面积】", areas)
     print("【圆心坐标】", centers)
-    return out,centers #修改5
+    return out #修改5
 
 # ================== D：框选后 + 二次亮度校验 ==================
 def _algo_D(img, max_spots=1):

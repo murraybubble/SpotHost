@@ -1,12 +1,12 @@
 import math
-
+import re  
 import sys
 import os
 from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                             QGridLayout, QPushButton, QTableWidget, QTableWidgetItem,
-                            QSpacerItem, QSizePolicy, QMessageBox)
+                            QSpacerItem, QSizePolicy, QMessageBox,QFileDialog,QHeaderView)
 
 
 def calculate_ideal_divergence(wavelength, aperture):
@@ -31,20 +31,18 @@ def calculate_quality_factor(actual_divergence, ideal_divergence):
         return 0
     return actual_divergence / ideal_divergence
 
+def calculate_distance(coord1, coord2):
+    """计算两个坐标之间的像素距离"""
+    x1, y1 = coord1
+    x2, y2 = coord2
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
 class ParameterCalculationWindow(QDialog):
     def __init__(self):
         super(ParameterCalculationWindow, self).__init__()
         self.setWindowTitle('激光参数计算器')
         self.setMinimumSize(963, 760)
-
-        self.latest_centers = []      # [(x1,y1),(x2,y2),(x3,y3)]
-        self.center_A = None
-        self.center_B = None
-        self.center_C = None
-
-         # ---------- 新增：角度刷新控制 ----------
-        self.angles_active = False           # 点击计算后设为 True，定时器启动时生效
-        self.transmission_distance = None    # 由计算按钮读取并保存
+        self.coordinates = []  # 用于存储读取的坐标数据
 
         self.layout = QVBoxLayout(self)  
         self.layout.setContentsMargins(20, 5, 20, 20)
@@ -71,12 +69,10 @@ class ParameterCalculationWindow(QDialog):
 
         self.table_widget = QTableWidget(self)
         self.table_widget.setRowCount(1)
-        self.table_widget.setColumnCount(4)
-        self.table_widget.setHorizontalHeaderLabels(["远-近夹角", "中-近夹角", "远-中夹角", "测试时间"])
-        self.table_widget.setColumnWidth(0, 100)  
-        self.table_widget.setColumnWidth(1, 100)  
-        self.table_widget.setColumnWidth(2, 100)  
-        self.table_widget.setColumnWidth(3, 100)  
+        self.table_widget.setColumnCount(3)
+        self.table_widget.setHorizontalHeaderLabels(["A-C", "B-C", "A-B"])
+        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
 
         top_layout.addWidget(self.table_widget)
         top_layout.setStretch(0, 1)
@@ -157,29 +153,19 @@ class ParameterCalculationWindow(QDialog):
         grid_layout.addWidget(self.label8, 2, 2)
         grid_layout.addWidget(self.output_quality_factor, 2, 3)
 
-        self.label_angle_A_B = QLabel("A-B激光相互夹角：")
-        self.label_angle_A_B.setStyleSheet("font-size: 16px;")
-        self.output_angle_A_B = QLineEdit()
-        self.output_angle_A_B.setReadOnly(True)
-        self.output_angle_A_B.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_A_B, 3 ,2)
-        grid_layout.addWidget(self.output_angle_A_B, 3, 3)
+        self.label_ac = QLabel("A-C：远红外-近红外激光相互夹角")
+        self.label_ac.setStyleSheet("font-size: 16px;")
+        grid_layout.addWidget(self.label_ac, 3, 2)
 
-        self.label_angle_B_C = QLabel("B-C激光相互夹角：")
-        self.label_angle_B_C.setStyleSheet("font-size: 16px;")
-        self.output_angle_B_C = QLineEdit()
-        self.output_angle_B_C.setReadOnly(True)
-        self.output_angle_B_C.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_B_C, 4, 2)
-        grid_layout.addWidget(self.output_angle_B_C, 4, 3)
+        self.label_bc = QLabel("B-C：中红外-近红外激光相互夹角")
+        self.label_bc.setStyleSheet("font-size: 16px;")
+        grid_layout.addWidget(self.label_bc, 4, 2)
 
-        self.label_angle_C_A = QLabel("C-A激光相互夹角：")
-        self.label_angle_C_A.setStyleSheet("font-size: 16px;")
-        self.output_angle_C_A = QLineEdit()
-        self.output_angle_C_A.setReadOnly(True)
-        self.output_angle_C_A.setStyleSheet("font-size: 14px; height: 30px;")
-        grid_layout.addWidget(self.label_angle_C_A, 5, 2)
-        grid_layout.addWidget(self.output_angle_C_A, 5, 3)
+        self.label_ab = QLabel("A-B：远红外-中红外激光相互夹角")
+        self.label_ab.setStyleSheet("font-size: 16px;")
+        grid_layout.addWidget(self.label_ab, 5, 2)
+
+
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.layout.addItem(spacer)
@@ -190,20 +176,45 @@ class ParameterCalculationWindow(QDialog):
         self.submit_button.setStyleSheet("font-size: 14px; height: 30px;")
         self.submit_button.clicked.connect(self.calculate_parameters)
 
+        self.read_log_button = QPushButton('读取日志')
+        self.read_log_button.setStyleSheet("font-size: 14px; height: 30px;")
+        self.read_log_button.clicked.connect(self.read_log_file)
+
+        self.layout.addWidget(self.read_log_button)
         self.layout.addWidget(self.submit_button)
         self.setLayout(self.layout)
 
-# ---------- 新增：角度刷新定时器（创建但不启动） ----------
-        self.angle_timer = QTimer(self)
-        self.angle_timer.timeout.connect(self.update_angles_periodically)
-        # 若需要别处停止定时器，可调用 self.angle_timer.stop()
+    def read_log_file(self):
+        """读取日志文件并提取坐标信息"""
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择日志文件", "", "文本文件 (*.txt);;所有文件 (*)")
+        if not file_path:
+            return  # 如果没有选择文件则返回
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+
+            coordinates = []
+            for line in lines:
+                # 使用正则表达式提取坐标，格式：(x, y)
+                match = re.findall(r'\((\d+\.?\d*),\s*(\d+\.?\d*)\)', line)
+                if len(match) == 3:  # 每行应该有三个坐标
+                    coordinates.append([(float(x), float(y)) for x, y in match])
+
+            self.coordinates = coordinates  # 存储读取的坐标数据
+            QMessageBox.information(self, "读取日志", "日志已成功读取！")
+        except ValueError as e:
+            QMessageBox.critical(self, "输入错误", str(e))
 
     def calculate_parameters(self):
         try:
             if not self.input_wavelength.text() or not self.input_aperture.text() or not self.input_spot_diameter.text() or not self.input_laser_power.text() or not self.input_transmission_distance.text() or not self.input_distance.text():
                 QMessageBox.warning(self, "提示", "请输入数据")
                 return
-            
+            if not self.coordinates:
+                QMessageBox.warning(self, "提示", "请先读取日志文件")
+                return
+
             wavelength = float(self.input_wavelength.text().strip())
             aperture = float(self.input_aperture.text().strip())
             spot_diameter = float(self.input_spot_diameter.text().strip())
@@ -232,76 +243,32 @@ class ParameterCalculationWindow(QDialog):
             self.output_actual_divergence.setText(f"{actual_divergence:.3e} rad")
             self.output_quality_factor.setText(f"{quality_factor:.3e}")
 
- # ---------- 新增：保存传输距离并启动定时器刷新角度（每秒） ----------
-            # 如果没有检测到三个光斑中心，则提醒用户先获取光斑
-            if len(self.latest_centers) < 3:
-                QMessageBox.warning(self, "提示", "尚未检测到三个光斑中心，无法计算激光夹角。请先让相机检测到三个光斑。")
-                return
-        
-            # 保存传输距离供定时器使用
-            self.transmission_distance = transmission_distance
+            # 获取每像素实际距离 (直接使用事先设定的值)
+            pixel_scale = 0.0005  # 每像素实际距离，单位：米/像素 (0.5mm/px)
+            # 获取传输距离
+            # transmission_distance = float(self.input_transmission_distance.text().strip())
+            distances = []
+            for coord_set in self.coordinates:
+              if len(coord_set) == 3:
+                dist1 = calculate_distance(coord_set[0], coord_set[1])
+                dist2 = calculate_distance(coord_set[0], coord_set[2])
+                dist3 = calculate_distance(coord_set[1], coord_set[2])
+            # 将距离除以传输距离，得到夹角
+                angle1 = dist1 * pixel_scale / transmission_distance
+                angle2 = dist2 * pixel_scale / transmission_distance
+                angle3 = dist3 * pixel_scale / transmission_distance
+                distances.append((angle1, angle2, angle3))
 
-# 启动刷新（如果已经运行则先停止再启动，避免重复）
-            if self.angle_timer.isActive():
-                self.angle_timer.stop()
-            self.angles_active = True
-            self.angle_timer.start(1000)  # 每 1000 ms 刷新一次
+                # 更新表格，将夹角数据填入表格
+                self.table_widget.setRowCount(len(distances))  # 设置表格行数为计算出的行数
+                for row, dist in enumerate(distances):
+                  self.table_widget.setItem(row, 0, QTableWidgetItem(f"{dist[0]:.3f} rad"))  # 远-近夹角
+                  self.table_widget.setItem(row, 1, QTableWidgetItem(f"{dist[1]:.3f} rad"))  # 中-近夹角
+                  self.table_widget.setItem(row, 2, QTableWidgetItem(f"{dist[2]:.3f} rad"))  # 远-中夹角
+            
+            QMessageBox.information(self, "计算完成", "激光相互夹角计算完成！")
 
         except ValueError as e:
             QMessageBox.critical(self, "输入错误", str(e))
-
-      # ------------------ 定时器槽函数 ------------------
-    def update_angles_periodically(self):
-        """每秒刷新光斑夹角"""
-        if self.angles_active and all([self.center_A, self.center_B, self.center_C]):
-            self.update_angles()  # 调用更新夹角和表格
-
-    def update_laser_centers(self, centers, transmission_distance):
-        if centers is None:
-            return
-        
-        if len(centers) < 3:
-            self.latest_centers = centers[:]   # 只保存，不计算
-            return
-
-        # 只保存，不计算
-        self.latest_centers = centers[:3]
-        self.center_A, self.center_B, self.center_C = centers[:3]
-
-        def update_angles(self):
-            """
-            使用 self.latest_centers 和 self.transmission_distance 计算夹角并更新输出框与表格。
-            这个函数由定时器每秒调用（当 angles_active=True 时）。
-            """
-        # 必要检查
-        if not self.angles_active:
-            return
-        if self.transmission_distance is None:
-            return
-        if len(self.latest_centers) < 3:
-            return
-
-        A, B, C = self.latest_centers
-
-        def calc_angle(p1, p2):
-            b = ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**0.5
-            return b / self.transmission_distance
-
-        angle_A_B = calc_angle(self.center_A, self.center_B)
-        angle_B_C = calc_angle(self.center_B, self.center_C)
-        angle_C_A = calc_angle(self.center_C, self.center_A)
-
-        # 更新输出框
-        self.output_angle_A_B.setText(f"{angle_A_B:.3e} rad")
-        self.output_angle_B_C.setText(f"{angle_B_C:.3e} rad")
-        self.output_angle_C_A.setText(f"{angle_C_A:.3e} rad")
-
-        # 更新表格
-        current_time = QTime.currentTime().toString('hh:mm:ss')
-        row_position = self.table_widget.rowCount()
-        self.table_widget.insertRow(row_position)
-        self.table_widget.setItem(row_position, 0, QTableWidgetItem(f"{angle_A_B:.3e} rad"))
-        self.table_widget.setItem(row_position, 1, QTableWidgetItem(f"{angle_B_C:.3e} rad"))
-        self.table_widget.setItem(row_position, 2, QTableWidgetItem(f"{angle_C_A:.3e} rad"))
-        self.table_widget.setItem(row_position, 3, QTableWidgetItem(current_time))
-        self.table_widget.scrollToBottom()
+        except Exception as e:
+            QMessageBox.critical(self, "读取日志文件错误", f"错误：{e}")

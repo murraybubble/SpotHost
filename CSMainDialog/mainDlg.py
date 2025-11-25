@@ -801,21 +801,18 @@ class main_Dialog(QWidget):
     #     self.adc_window.activateWindow()  # 激活窗口
     #     self.log("点源探测器显示界面已打开")
     def launch_independent_process(self):
-        """启动完全独立的进程"""
+        """启动完全独立的第二个 EXE 应用"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            second_app_script = os.path.join(current_dir, "complete_version.py")
-            
-            if not os.path.exists(second_app_script):
-                QMessageBox.warning(self, "错误", "找不到第二个应用脚本")
+            exe_path = os.path.join(current_dir,"complete_version", "complete_version.exe")
+            print(exe_path)
+
+            if not os.path.exists(exe_path):
+                QMessageBox.warning(self, "错误", "找不到 complete_version.exe")
                 return
-            
-            # 方法1：尝试使用pythonw.exe
-            pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
-            if os.path.exists(pythonw_exe):
-                subprocess.Popen([pythonw_exe, second_app_script])
-                return
-                
+
+            subprocess.Popen([exe_path], shell=False)
+
         except Exception as e:
             QMessageBox.critical(self, "启动失败", f"错误: {str(e)}")
 

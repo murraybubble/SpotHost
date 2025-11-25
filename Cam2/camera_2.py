@@ -79,7 +79,7 @@ class Camera2Thread(QThread):
         self.cap = None
         self.thread_tag = id(self)
         self.last_frame = None
-        self.frame_interval = 20  # 控制帧率，约50fps
+        self.frame_interval = 200  # 控制帧率，约50fps
         self.last_processed_time = 0
         print(f"[Camera2Thread] 初始化线程 (RTSP: {self.rtsp_url}, 标识: {self.thread_tag})")
 
@@ -92,7 +92,7 @@ class Camera2Thread(QThread):
             if not self.cap:
                 self.cap = cv2.VideoCapture(self.rtsp_url)
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 减少缓冲区，降低延迟
-                self.cap.set(cv2.CAP_PROP_FPS, 50)  # 设置为相机实际帧率
+                self.cap.set(cv2.CAP_PROP_FPS, 15)  # 设置为相机实际帧率
                 if hasattr(cv2, 'CAP_PROP_TIMEOUT'):
                     self.cap.set(cv2.CAP_PROP_TIMEOUT, 500)
             
@@ -123,9 +123,6 @@ class Camera2Thread(QThread):
                 
                 # 控制帧率，避免处理过多帧
                 current_time = time.time() * 1000  # 毫秒
-                if current_time - self.last_processed_time < self.frame_interval:
-                    self.msleep(1)  # 减少等待时间，提高响应性
-                    continue
                 
                 ret, frame = self.cap.read()
                 if not ret:

@@ -20,7 +20,7 @@ from camera_control import (
     g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
 )
 from image_cropper import CropDialog
-from spot_algorithms import detect_spots
+from spot_algorithms import detect_spots,get_center
 from Cam2.camera_2 import Camera2Widget
 from Cam3.camera_3 import Camera3Widget
 from complete_version import ADCWindow
@@ -430,7 +430,7 @@ class main_Dialog(QWidget):
 
         buffer = self.data_stream.GetBuffer(1000)
         if buffer is None:
-            self.log("获取数据流缓冲区失败")
+            self.log("数据流缓冲区为空")
             return 0
 
         if buffer.IsIncomplete():
@@ -786,6 +786,7 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
+            self.log(f"光斑坐标：{get_center()}")
         except Exception as e:
             self.log(f"_update_display 异常: {e}")
 
@@ -800,21 +801,18 @@ class main_Dialog(QWidget):
     #     self.adc_window.activateWindow()  # 激活窗口
     #     self.log("点源探测器显示界面已打开")
     def launch_independent_process(self):
-        """启动完全独立的进程"""
+        """启动完全独立的第二个 EXE 应用"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            second_app_script = os.path.join(current_dir, "complete_version.py")
-            
-            if not os.path.exists(second_app_script):
-                QMessageBox.warning(self, "错误", "找不到第二个应用脚本")
+            exe_path = os.path.join(current_dir,"complete_version", "complete_version.exe")
+            print(exe_path)
+
+            if not os.path.exists(exe_path):
+                QMessageBox.warning(self, "错误", "找不到 complete_version.exe")
                 return
-            
-            # 方法1：尝试使用pythonw.exe
-            pythonw_exe = sys.executable.replace("python.exe", "pythonw.exe")
-            if os.path.exists(pythonw_exe):
-                subprocess.Popen([pythonw_exe, second_app_script])
-                return
-                
+
+            subprocess.Popen([exe_path], shell=False)
+
         except Exception as e:
             QMessageBox.critical(self, "启动失败", f"错误: {str(e)}")
 

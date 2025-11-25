@@ -27,7 +27,7 @@ from CSMainDialog.spot_detection import preprocess_image_cv, detect_and_draw_spo
 from CSMainDialog.reconstruction3d import generate_3d_image
 from CSMainDialog.parameter_calculation import ParameterCalculationWindow
 from CSMainDialog.image_cropper import CropDialog
-from CSMainDialog.spot_algorithms import detect_spots
+from CSMainDialog.spot_algorithms import detect_spots,get_center
 
 
 class Camera3Thread(QThread):
@@ -917,7 +917,8 @@ class Camera3Widget(QWidget):
         self.show_cv_image(self.label1, frame)
         self.show_cv_image(self.label2, spots_output)
         self.show_cv_image(self.label3, heatmap)
-        
+        self.update_status(f"光斑坐标：{get_center()}")
+
         if self.last_3d_image is not None:
             self.show_cv_image(self.label4, self.last_3d_image)
 

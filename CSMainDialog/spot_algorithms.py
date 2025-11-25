@@ -12,6 +12,7 @@ def _die(code: int, msg: str):
     print(f"【检测错误 {code}】{msg}")
     return None   # 不再抛异常
 
+spot_center = []
 # ---------------- 通用预处理 ----------------
 def _pre_check(img):
     if img is None:
@@ -29,6 +30,9 @@ def _pre_check(img):
         _die(ERR_IMG_BLACK, "整幅图全黑")
         return None
     return gray
+
+def get_center():
+    return spot_center
 
 # ================== A：标准多光斑 ==================
 def _algo_A(img, max_spots=3):
@@ -86,6 +90,8 @@ def _algo_A(img, max_spots=3):
         return img #修改2
     # 控制台打印
     print("【光斑面积】", areas)
+    global spot_center
+    spot_center = centers
     print("【圆心坐标】", centers)
     return out #返回光斑中心，修改3
 

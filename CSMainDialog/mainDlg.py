@@ -20,7 +20,7 @@ from camera_control import (
     g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
 )
 from image_cropper import CropDialog
-from spot_algorithms import detect_spots
+from spot_algorithms import detect_spots,get_center
 from Cam2.camera_2 import Camera2Widget
 from Cam3.camera_3 import Camera3Widget
 from complete_version import ADCWindow
@@ -786,6 +786,7 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
+            self.log(f"光斑坐标：{get_center()}")
         except Exception as e:
             self.log(f"_update_display 异常: {e}")
 

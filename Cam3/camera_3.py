@@ -1120,10 +1120,3 @@ class Camera3Widget(QWidget):
         
         event.accept()
 
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = Camera3Widget()
-    window.show()
-    sys.exit(app.exec_())

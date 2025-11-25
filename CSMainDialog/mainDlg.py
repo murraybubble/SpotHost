@@ -249,17 +249,20 @@ class main_Dialog(QWidget):
     def toggle_import_mode(self):
         """
         点击“🖼 导入图片”按钮：
-        - 若当前不在图片模式：停止相机、选择图片、运行光斑检测和热度图，进入图片模式
-        - 若当前在图片模式：退出图片模式；如之前相机在播放，则自动恢复
+        - 若当前不在图片模式：
+            - 如果相机在播放，则暂停相机，进入图片模式并选择图片，运行光斑检测和热度图，进入图片模式
+            - 如果相机没有在播放，则直接进入图片模式并选择图片
+        - 若当前在图片模式：退出图片模式；如果之前相机在播放，则自动恢复
         """
         if not self.external_mode:
-            # 进入外部图片模式
-            # 记录进入前相机是否在播放
-            self.was_playing_before_import = hasattr(self, 'thread') and getattr(self, 'thread', None) and self.thread.is_alive()
-
-            if self.was_playing_before_import:
-                self.log("进入图片模式前，先停止相机回放")
-                self.camStop()
+            # 进入外部图片模式前，检查相机是否在播放
+            if hasattr(self, 'thread') and isinstance(self.thread, Thread):
+                # 如果相机在播放，暂停相机
+                if self.thread.is_alive():
+                    self.log("进入图片模式前，先停止相机回放")
+                    self.camStop()  # 停止相机播放
+            else:
+                self.log("相机未连接，直接进入图片模式")
 
             options = QFileDialog.Options()
             file_path, _ = QFileDialog.getOpenFileName(
@@ -272,20 +275,12 @@ class main_Dialog(QWidget):
 
             if not file_path:
                 self.log("取消选择外部图片")
-                # 如果之前在播放且被我们停掉了，这里是否恢复？
-                if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
-                    self.camPlay()
-                self.was_playing_before_import = False
                 return
 
             img = cv.imread(file_path, cv.IMREAD_COLOR)
             if img is None:
                 QMessageBox.critical(self, "错误", "无法读取该图片，请检查文件格式")
                 self.log(f"读取图片失败：{file_path}")
-                # 同上：恢复播放
-                if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
-                    self.camPlay()
-                self.was_playing_before_import = False
                 return
 
             self.log(f"已导入图片：{file_path}")
@@ -302,12 +297,10 @@ class main_Dialog(QWidget):
             self.pbImport.setText("🖼 导入图片")
             self.log("已退出外部图片模式")
 
-            # 恢复相机回放（如果进入前是播放状态，并且当前有相机）
-            if self.was_playing_before_import and hasattr(self, 'device') and self.device.IsValid():
-                self.log("恢复进入图片模式前的相机回放状态")
+            # 如果之前相机在播放，恢复相机回放
+            if hasattr(self, 'thread') and isinstance(self.thread, Thread) and self.thread.is_alive():
+                self.log("恢复相机回放")
                 self.camPlay()
-
-            self.was_playing_before_import = False
 
     def _process_external_image(self, img_color):
         """

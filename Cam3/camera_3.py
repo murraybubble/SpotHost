@@ -27,8 +27,9 @@ from CSMainDialog.spot_detection import preprocess_image_cv, detect_and_draw_spo
 from CSMainDialog.reconstruction3d import generate_3d_image
 from CSMainDialog.parameter_calculation import ParameterCalculationWindow
 from CSMainDialog.image_cropper import CropDialog
-from CSMainDialog.spot_algorithms import detect_spots,get_center
+from CSMainDialog.spot_algorithms import detect_spots,get_center_area
 
+camera_frame = 15
 
 class Camera3Thread(QThread):
     """相机线程（支持启动/暂停，复用资源）"""
@@ -56,7 +57,7 @@ class Camera3Thread(QThread):
             if not self.cap:
                 self.cap = cv2.VideoCapture(self.rtsp_url)
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                self.cap.set(cv2.CAP_PROP_FPS, 15)
+                self.cap.set(cv2.CAP_PROP_FPS, camera_frame)
                 if hasattr(cv2, 'CAP_PROP_TIMEOUT'):
                     self.cap.set(cv2.CAP_PROP_TIMEOUT, 500)  # 缩短超时，提升响应速度
             
@@ -71,7 +72,7 @@ class Camera3Thread(QThread):
             params = {
                 "width": int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 "height": int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                "fps": round(self.cap.get(cv2.CAP_PROP_FPS), 1),
+                "fps": camera_frame,
                 "codec": int(self.cap.get(cv2.CAP_PROP_FOURCC))
             }
             self.param_signal.emit(params)
@@ -917,7 +918,9 @@ class Camera3Widget(QWidget):
         self.show_cv_image(self.label1, frame)
         self.show_cv_image(self.label2, spots_output)
         self.show_cv_image(self.label3, heatmap)
-        self.update_status(f"光斑坐标：{get_center()}")
+        center,area = get_center_area()
+        self.update_status(f"光斑坐标：{center}")
+        self.update_status(f"光斑面积：{area}")
 
         if self.last_3d_image is not None:
             self.show_cv_image(self.label4, self.last_3d_image)
@@ -1117,9 +1120,3 @@ class Camera3Widget(QWidget):
         
         event.accept()
 
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = Camera3Widget()
-    window.show()
-    sys.exit(app.exec_())

@@ -169,7 +169,7 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
 
 def SetupExposure(camera, expValue):
     """
-    设置快门时间（ExposureTimeRaw），使用提供的 expValue。
+    设置积分时间（ExposureTimeRaw），使用提供的 expValue。
     """
     pars = camera.GetCameraParameters()
     if pars is None:
@@ -192,15 +192,15 @@ def SetupExposure(camera, expValue):
 
     expMin, expMax = parExp.GetMin()[1], parExp.GetMax()[1]
     if not (expMin <= expValue <= expMax):
-        print(f'快门时间 {expValue} 超出范围 [{expMin}, {expMax}]')
+        print(f'积分时间 {expValue} 超出范围 [{expMin}, {expMax}]')
         return False
 
     try:
         parExp.SetValue(expValue)
-        print(f'快门时间设置为 {expValue}')
+        print(f'积分时间设置为 {expValue}')
         return True
     except Exception as e:
-        print(f'设置快门时间失败: {e}')
+        print(f'设置积分时间失败: {e}')
         return False
 
 def SetupGain(camera, gainValue):
@@ -243,7 +243,7 @@ def SetupGain(camera, gainValue):
 
 def SaveExposureAndGain(camera):
     """
-    保存当前相机的快门时间和增益到用户指定的文件（弹窗选择文件名）
+    保存当前相机的积分时间和增益到用户指定的文件（弹窗选择文件名）
     文件保存在 camera_setting 文件夹下
     """
     pars = camera.GetCameraParameters()
@@ -286,7 +286,7 @@ def SaveExposureAndGain(camera):
 
 def LoadExposureAndGain(camera):
     """
-    从用户选择的文件中读取快门时间和增益并应用到相机上（弹窗选择文件）
+    从用户选择的文件中读取积分时间和增益并应用到相机上（弹窗选择文件）
     """
     file_path = filedialog.askopenfilename(
         title="加载相机设置",

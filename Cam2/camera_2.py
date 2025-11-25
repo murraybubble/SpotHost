@@ -24,8 +24,9 @@ from CSMainDialog.spot_detection import preprocess_image_cv, detect_and_draw_spo
 from CSMainDialog.reconstruction3d import generate_3d_image
 from CSMainDialog.parameter_calculation import ParameterCalculationWindow
 from CSMainDialog.image_cropper import CropDialog
-from CSMainDialog.spot_algorithms import detect_spots,get_center
+from CSMainDialog.spot_algorithms import detect_spots,get_center_area
 
+camera_frame = 15   # 手动设置相机帧率
 class DetailGainDialog(QDialog):
     """细节增益调节对话框"""
     def __init__(self, parent=None, current_value=0):
@@ -79,7 +80,6 @@ class Camera2Thread(QThread):
         self.cap = None
         self.thread_tag = id(self)
         self.last_frame = None
-        self.frame_interval = 200  # 控制帧率，约50fps
         self.last_processed_time = 0
         print(f"[Camera2Thread] 初始化线程 (RTSP: {self.rtsp_url}, 标识: {self.thread_tag})")
 
@@ -92,7 +92,7 @@ class Camera2Thread(QThread):
             if not self.cap:
                 self.cap = cv2.VideoCapture(self.rtsp_url)
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 减少缓冲区，降低延迟
-                self.cap.set(cv2.CAP_PROP_FPS, 15)  # 设置为相机实际帧率
+                self.cap.set(cv2.CAP_PROP_FPS, camera_frame)  # 设置为相机实际帧率
                 if hasattr(cv2, 'CAP_PROP_TIMEOUT'):
                     self.cap.set(cv2.CAP_PROP_TIMEOUT, 500)
             
@@ -106,7 +106,7 @@ class Camera2Thread(QThread):
             params = {
                 "width": int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 "height": int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                "fps": round(self.cap.get(cv2.CAP_PROP_FPS), 1),
+                "fps": camera_frame,     #设置成实际帧率
                 "codec": int(self.cap.get(cv2.CAP_PROP_FOURCC))
             }
             self.param_signal.emit(params)
@@ -887,7 +887,9 @@ class Camera2Widget(QWidget):
         self.show_cv_image(self.label1, frame)
         self.show_cv_image(self.label2, spots_output)
         self.show_cv_image(self.label3, heatmap)
-        self.update_status(f"光斑坐标：{get_center()}")
+        center,area = get_center_area()
+        self.update_status(f"光斑坐标：{center}")
+        self.update_status(f"光斑面积：{area}")
         
         if self.last_3d_image is not None:
             self.show_cv_image(self.label4, self.last_3d_image)
@@ -986,12 +988,8 @@ class Camera2Widget(QWidget):
             QMessageBox.critical(self, "错误", error_msg)
 
     def open_parameter_calculation_window(self):
-        if self.last_gray is None:
-            QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
-            return
-            
         try:
-            self.param_window = ParameterCalculationWindow(self.last_gray)
+            self.param_window = ParameterCalculationWindow()
             self.param_window.show()
         except Exception as e:
             self.update_status(f"打开参数计算窗口失败: {str(e)}", level="error")

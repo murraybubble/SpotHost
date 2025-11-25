@@ -20,7 +20,7 @@ from camera_control import (
     g_autoAdjust, SaveExposureAndGain, LoadExposureAndGain
 )
 from image_cropper import CropDialog
-from spot_algorithms import detect_spots,get_center
+from spot_algorithms import detect_spots,get_center_area
 from Cam2.camera_2 import Camera2Widget
 from Cam3.camera_3 import Camera3Widget
 from complete_version import ADCWindow
@@ -503,7 +503,7 @@ class main_Dialog(QWidget):
             g_autoAdjust = True
             success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
             if success:
-                self.log("自动调节快门时间和增益成功")
+                self.log("自动调节积分时间和增益成功")
                 pars = self.device.GetCameraParameters()
                 parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
                 parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
@@ -554,16 +554,16 @@ class main_Dialog(QWidget):
                     raise ValueError("不支持 ExposureTimeRaw 参数")
                 exp_min, exp_max = parExp.GetMin()[1], parExp.GetMax()[1]
                 if not (exp_min <= exp_value <= exp_max):
-                    QMessageBox.warning(self, "输入错误", f"请输入正确数值\n快门时间范围: [{exp_min}, {exp_max}]")
-                    self.log(f"快门时间 {exp_value} 超出范围 [{exp_min}, {exp_max}]")
+                    QMessageBox.warning(self, "输入错误", f"请输入正确数值\n积分时间范围: [{exp_min}, {exp_max}]")
+                    self.log(f"积分时间 {exp_value} 超出范围 [{exp_min}, {exp_max}]")
                     success = False
                 elif not SetupExposure(self.device, exp_value):
                     success = False
                 else:
-                    self.log(f"快门时间设置为 {exp_value} us")
+                    self.log(f"积分时间设置为 {exp_value} us")
             except ValueError:
-                QMessageBox.warning(self, "输入错误", "请输入正确数值\n快门时间必须是数字")
-                self.log(f"快门时间输入无效: {shutter_text}")
+                QMessageBox.warning(self, "输入错误", "请输入正确数值\n积分时间必须是数字")
+                self.log(f"积分时间输入无效: {shutter_text}")
                 success = False
 
         if gain_text:
@@ -786,7 +786,9 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
-            self.log(f"光斑坐标：{get_center()}")
+            center,area = get_center_area()
+            self.log(f"光斑坐标：{center}")
+            self.log(f"光斑面积：{area}")
         except Exception as e:
             self.log(f"_update_display 异常: {e}")
 
@@ -835,7 +837,7 @@ class main_Dialog(QWidget):
             QMessageBox.critical(self, "错误", "相机未连接")
             return
         if SaveExposureAndGain(self.device):
-            self.log("相机参数（快门时间与增益）已成功保存到 camera_settings.txt")
+            self.log("相机参数（积分时间与增益）已成功保存到 camera_settings.txt")
             QMessageBox.information(self, "成功", "参数保存成功")
         else:
             self.log("保存相机参数失败")
@@ -1094,9 +1096,9 @@ class main_Dialog(QWidget):
         self.pbAutoAdjust.setEnabled(False)
         settings_layout.addWidget(self.pbAutoAdjust, 0, 0, 1, 2)
 
-        settings_layout.addWidget(QLabel('快门时间 (μs):'), 1, 0)
+        settings_layout.addWidget(QLabel('积分时间 (μs):'), 1, 0)
         self.shutter_input = QLineEdit()
-        self.shutter_input.setPlaceholderText('输入快门时间')
+        self.shutter_input.setPlaceholderText('输入积分时间')
         settings_layout.addWidget(self.shutter_input, 1, 1)
 
         settings_layout.addWidget(QLabel('增益:'), 2, 0)

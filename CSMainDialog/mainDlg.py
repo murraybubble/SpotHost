@@ -348,7 +348,7 @@ class main_Dialog(QWidget):
         t.start()
 
     def save_all(self):
-        save_dir = os.path.join(os.getcwd(), "Saved_Results")
+        save_dir = "./Saved_Files/Cam1"
         os.makedirs(save_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
 
@@ -383,12 +383,12 @@ class main_Dialog(QWidget):
         save_label_image(self.label3, "heatmap")
         save_label_image(self.label4, "3d")
 
-        log_path = os.path.join(save_dir, f"{timestamp}_spots.txt")
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write(self.log_text_edit.toPlainText())
+        # log_path = os.path.join(save_dir, f"{timestamp}_spots.txt")
+        # with open(log_path, "w", encoding="utf-8") as f:
+        #     f.write(self.log_text_edit.toPlainText())
 
-        self.log(f"📝 已保存日志到 {log_path}")
-        self.log("✅ 所有保存任务完成。")
+        # self.log(f"📝 已保存日志到 {log_path}")
+        self.log("✅ 保存图片完成。")
 
     
     def CreateDataStreamBuffers(self):
@@ -439,7 +439,7 @@ class main_Dialog(QWidget):
         if self.recording:
             if self.video_writer is None:
                 # 第一次写入时创建 VideoWriter
-                save_dir = os.path.join(os.getcwd(), "Cam1_Videos")
+                save_dir = "./Saved_Files/Cam1"
                 os.makedirs(save_dir, exist_ok=True)
                 filename = f"{self.record_start_time}.mp4"
                 self.last_video_path = os.path.join(save_dir, filename)

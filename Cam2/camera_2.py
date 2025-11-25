@@ -257,7 +257,7 @@ class Camera2Widget(QWidget):
         super().__init__()
         self.camera_thread = None
         self.thread_pool = QThreadPool()
-        self.thread_pool.setMaxThreadCount(4)  # 限制线程池大小
+        self.thread_pool.setMaxThreadCount(16)  # 限制线程池大小
         self.current_processing_worker = None
         self.current_3d_worker = None
         

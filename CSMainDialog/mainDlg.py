@@ -430,7 +430,7 @@ class main_Dialog(QWidget):
 
         buffer = self.data_stream.GetBuffer(1000)
         if buffer is None:
-            self.log("获取数据流缓冲区失败")
+            self.log("数据流缓冲区为空")
             return 0
 
         if buffer.IsIncomplete():

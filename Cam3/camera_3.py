@@ -1118,27 +1118,6 @@ class Camera3Widget(QWidget):
         event.accept()
 
 
-    def show_3d_image(self):
-      if self.last_gray is None:
-            QMessageBox.warning(self, "警告", "没有可处理的图像，请先获取视频帧")
-            return
-      self.update_status("正在生成3D图像...")
-      class Generate3DThread(QThread):
-            finished = pyqtSignal(np.ndarray)
-
-            def __init__(self, gray_img):
-                super().__init__()
-                self.gray_img = gray_img
-                
-            def run(self):
-                try:
-                    image_3d = generate_3d_image(self.gray_img)
-                    self.finished.emit(image_3d)
-                except Exception as e:
-                    print(f"生成3D图像错误: {str(e)}")
-                    self.finished.emit(None)
-
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = Camera3Widget()

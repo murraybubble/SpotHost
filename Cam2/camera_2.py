@@ -379,7 +379,7 @@ class Camera2Widget(QWidget):
         self.show3d_btn.setMinimumHeight(40)
         self.show3d_btn.clicked.connect(self.show_3d_image)
         
-        self.save_all_btn = QPushButton("💿 保存全部")
+        self.save_all_btn = QPushButton("💿 保存图片")
         self.save_all_btn.setObjectName("control_btn")
         self.save_all_btn.setMinimumHeight(40)
         self.save_all_btn.clicked.connect(self.save_all)

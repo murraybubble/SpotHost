@@ -1020,7 +1020,7 @@ class main_Dialog(QWidget):
         self.pbSaveLog = create_function_btn('保存日志', self.save_log, True)
         self.pbCropImage = create_function_btn('裁切图像', self.crop_image, False)
         self.pbShow3D = create_function_btn('显示 3D', self.show_3d_image, True)
-        self.pbSaveAll = create_function_btn('保存全部', self.save_all, True)
+        self.pbSaveAll = create_function_btn('保存图片', self.save_all, True)
         self.pbParameterCalculation = create_function_btn('参数计算',
                                                           self.open_parameter_calculation_window, True)
         self.pbImport = create_function_btn('导入图片', self.toggle_import_mode, True)

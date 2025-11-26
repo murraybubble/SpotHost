@@ -276,7 +276,7 @@ class Camera2Widget(QWidget):
         
         self.setWindowTitle("长波红外相机 - 光斑识别系统")
         self.init_ui()
-        self.init_serial_connection()
+        # self.init_serial_connection()
 
         # 连接信号与槽
         self.image_signal.connect(self._update_display)
@@ -323,9 +323,9 @@ class Camera2Widget(QWidget):
 
     def init_serial_connection(self):
         if self.controller.connect():
-            self.update_status(f"串口连接成功", level="info")
+            QMessageBox.information(self,"成功", "串口连接成功")
         else:
-            self.update_status(f"串口连接失败，请检查设备", level="warn")
+            QMessageBox.critical(self,"异常","串口连接失败")
 
     def init_ui(self):
         # 主布局改为垂直布局，顶部添加工具栏
@@ -510,17 +510,20 @@ class Camera2Widget(QWidget):
         # 串口控制
         serial_group = QGroupBox("串口控制")
         serial_layout = QHBoxLayout()
-        
-        self.serial_combo = QComboBox()
-        self.serial_combo.setMinimumWidth(120)
-        serial_layout.addWidget(QLabel("端口:"))
-        serial_layout.addWidget(self.serial_combo)
-        
+
+        # 连接按钮
         self.serial_conn_btn = QPushButton("连接")
         self.serial_conn_btn.setMinimumHeight(30)
-        self.serial_conn_btn.clicked.connect(self.toggle_serial_conn)
+        self.serial_conn_btn.clicked.connect(self.connect_serial)
         serial_layout.addWidget(self.serial_conn_btn)
-        
+
+        # 添加断开按钮
+        self.serial_disconn_btn = QPushButton("断开")
+        self.serial_disconn_btn.setMinimumHeight(30)
+        self.serial_disconn_btn.clicked.connect(self.disconnect_serial)
+        self.serial_disconn_btn.setEnabled(False)  # 初始禁用
+        serial_layout.addWidget(self.serial_disconn_btn)
+
         serial_group.setLayout(serial_layout)
         left_layout.addWidget(serial_group)
         
@@ -987,6 +990,24 @@ class Camera2Widget(QWidget):
             self.update_status(error_msg, level="error")
             QMessageBox.critical(self, "错误", error_msg)
 
+    # 串口连接函数
+    def connect_serial(self):
+        """连接串口"""
+        if self.controller.connect():
+            self.update_status("串口连接成功")
+            self.serial_conn_btn.setEnabled(False)
+            self.serial_disconn_btn.setEnabled(True)
+        else:
+            self.update_status("串口连接失败")
+            QMessageBox.warning(self, "连接失败", "无法连接到串口设备，请检查设备是否正确连接")
+
+    def disconnect_serial(self):
+        """断开串口连接"""
+        self.controller.disconnect()
+        self.serial_conn_btn.setEnabled(True)
+        self.serial_disconn_btn.setEnabled(False)
+        self.update_status("串口已断开连接")
+
     def open_parameter_calculation_window(self):
         try:
             self.param_window = ParameterCalculationWindow()
@@ -996,35 +1017,35 @@ class Camera2Widget(QWidget):
 
     def on_scene_compensation(self):
         try:
-            self.controller.send_command("scene_comp")
+            self.controller.scene_compensation()
             self.update_status("已发送场景补偿命令")
         except Exception as e:
             self.update_status(f"发送场景补偿命令失败: {str(e)}", level="error")
 
     def on_shutter_compensation(self):
         try:
-            self.controller.send_command("shutter_comp")
+            self.controller.shutter_compensation()
             self.update_status("已发送快门补偿命令")
         except Exception as e:
             self.update_status(f"发送快门补偿命令失败: {str(e)}", level="error")
 
     def on_tele_focus(self):
         try:
-            self.controller.send_command("tele_focus")
+            self.controller.tele_focus()
             self.update_status("已发送远焦命令")
         except Exception as e:
             self.update_status(f"发送远焦命令失败: {str(e)}", level="error")
 
     def on_wide_focus(self):
         try:
-            self.controller.send_command("wide_focus")
+            self.controller.wide_focus()
             self.update_status("已发送近焦命令")
         except Exception as e:
             self.update_status(f"发送近焦命令失败: {str(e)}", level="error")
 
     def on_stop_focus(self):
         try:
-            self.controller.send_command("stop_focus")
+            self.controller.stop_focus()
             self.update_status("已发送调焦停止命令")
         except Exception as e:
             self.update_status(f"发送调焦停止命令失败: {str(e)}", level="error")
@@ -1034,33 +1055,11 @@ class Camera2Widget(QWidget):
         if dialog.exec_():
             self.detail_gain_value = dialog.get_value()
             try:
-                self.controller.send_command(f"detail_gain {self.detail_gain_value}")
+                self.controller.set_detail_gain(self.detail_gain_value)
                 self.update_status(f"已设置细节增益为 {self.detail_gain_value}")
             except Exception as e:
                 self.update_status(f"设置细节增益失败: {str(e)}", level="error")
 
-    def toggle_serial_conn(self):
-        if self.controller.is_connected():
-            try:
-                self.controller.disconnect()
-                self.serial_conn_btn.setText("连接")
-                self.update_status("串口已断开")
-            except Exception as e:
-                self.update_status(f"断开串口失败: {str(e)}", level="error")
-        else:
-            try:
-                port = self.serial_combo.currentText()
-                if not port:
-                    self.update_status("请选择串口端口", level="warn")
-                    return
-                self.controller.port = port
-                if self.controller.connect():
-                    self.serial_conn_btn.setText("断开")
-                    self.update_status("串口连接成功")
-                else:
-                    self.update_status("串口连接失败", level="error")
-            except Exception as e:
-                self.update_status(f"串口操作失败: {str(e)}", level="error")
 
     def update_params(self, params):
         self.video_params = params

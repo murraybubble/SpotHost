@@ -233,7 +233,7 @@ class Camera3Widget(QWidget):
         self.processing_thread.start()
 
         self.init_ui()
-        self.init_serial_connection()
+        # self.init_serial_connection()
 
         self.image_signal.connect(self._update_display)
         self.show3d_finished.connect(self._on_show3d_finished)
@@ -919,8 +919,8 @@ class Camera3Widget(QWidget):
         self.show_cv_image(self.label2, spots_output)
         self.show_cv_image(self.label3, heatmap)
         center,area = get_center_area()
-        self.update_status(f"光斑坐标：{center}")
-        self.update_status(f"光斑面积：{area}")
+        self.status_signal.emit(f"光斑坐标：{center}")
+        self.status_signal.emit(f"光斑面积：{area}")
 
         if self.last_3d_image is not None:
             self.show_cv_image(self.label4, self.last_3d_image)

@@ -225,13 +225,23 @@ class main_Dialog(QWidget):
     def _process_cropped_image_background(self, cropped_img):
         try:
             gray, blur = preprocess_image_cv(cropped_img)
-            spots_output = detect_and_draw_spots(cropped_img, log_func=self.log)
+
+            # 使用与实时处理完全一致的算法
+            spots_output = detect_spots(cropped_img, self.algo_type)
+
             heatmap = energy_distribution(gray)
+
+            # 更新公共状态
             self.cropped_image = cropped_img
             self.last_gray = gray
+            self.last_original_image = cropped_img.copy()
+
+            # 发信号到主线程显示
             self.cropped_image_signal.emit((cropped_img, spots_output, heatmap))
+
         except Exception as e:
             self.log(f"处理裁切图像时出错: {e}")
+
 
     def _process_cropped_image(self, imgs):
         try:

@@ -483,54 +483,13 @@ class main_Dialog(QWidget):
     # 伪积分时间系数 0~100
     g_fake_exp_coeff = 50.0          # 启动默认值
     g_real_gain_offset = 0.0         # 由系数算出的增益偏移
-    def _exp2offset(exp_coeff: float) -> float:
-        return exp_coeff * 0.2          # 例：100→20 dB,在这里该偏移量倍数！！！
-    def _offset2exp(offset: float) -> float:
+    def _exp2offset(self, exp_coeff: float) -> float:
+            """将积分系数转换为增益偏移量"""
+            return exp_coeff * 0.2  # 根据实际需求调整这个倍数
+
+    def _offset2exp(self, offset: float) -> float:
+        """将增益偏移量转换为积分系数"""
         return max(0.0, min(100.0, offset / 0.2))
-    def auto_adjust(self):
-        global g_fake_exp_coeff, g_real_gain_offset
-
-        if not hasattr(self, 'device') or not self.device.IsValid():
-            self.log("相机未连接")
-            QMessageBox.critical(self, "错误", "相机未连接")
-            return
-        try:
-                # 如果采集线程在跑，先暂停
-                if hasattr(self, 'thread') and self.thread.is_alive():
-                    self.log("暂停图像采集以进行自动调节")
-                    self.camStop()
-
-                # 仅调节增益，目标亮度 140±8
-                success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
-                if success:
-                    pars = self.device.GetCameraParameters()
-                    parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
-                    if parG is None:
-                        raise RuntimeError("无法获取 GainRaw")
-                    real_gain_now = parG.GetValue()[1]
-
-                    # 把真实增益拆成“界面增益”+“积分系数”
-                    display_gain = max(0.0, min(20.0, real_gain_now))   # 界面增益 0~20
-                    offset_gain  = real_gain_now - display_gain
-                    g_fake_exp_coeff = _offset2exp(offset_gain)
-
-                    # 回显到界面
-                    self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
-                    self.gain_input.setText(f"{display_gain:.2f}")
-                    self.log("自动调节完成（仅增益生效，积分系数已同步）")
-                else:
-                    self.log("自动调节失败")
-                    QMessageBox.critical(self, "错误", "自动调节失败")
-
-                # 如果原来在采集，恢复
-                if self.pbPlay.isEnabled() == False and self.pbStop.isEnabled() == True:
-                    self.log("恢复图像采集")
-                    self.camPlay()
-
-        except Exception as e:
-            self.log(f"自动调节失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"自动调节失败:\n{str(e)}")
-
     def confirm_settings(self):
         global g_fake_exp_coeff, g_real_gain_offset
 
@@ -567,7 +526,7 @@ class main_Dialog(QWidget):
             return
 
         # 计算真正的增益
-        g_real_gain_offset = _exp2offset(g_fake_exp_coeff)
+        g_real_gain_offset = self._exp2offset(g_fake_exp_coeff)  # 修复：使用 self.
         final_gain = base_gain + g_real_gain_offset
 
         # 范围检查（仅检查增益）
@@ -592,6 +551,50 @@ class main_Dialog(QWidget):
 
         QMessageBox.information(self, "成功", "参数设置成功！")
 
+    def auto_adjust(self):
+        global g_fake_exp_coeff, g_real_gain_offset
+
+        if not hasattr(self, 'device') or not self.device.IsValid():
+            self.log("相机未连接")
+            QMessageBox.critical(self, "错误", "相机未连接")
+            return
+        
+        try:
+            # 如果采集线程在跑，先暂停
+            if hasattr(self, 'thread') and self.thread.is_alive():
+                self.log("暂停图像采集以进行自动调节")
+                self.camStop()
+
+            # 仅调节增益，目标亮度 140±8
+            success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
+            if success:
+                pars = self.device.GetCameraParameters()
+                parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
+                if parG is None:
+                    raise RuntimeError("无法获取 GainRaw")
+                real_gain_now = parG.GetValue()[1]
+
+                # 把真实增益拆成"界面增益"+"积分系数"
+                display_gain = max(0.0, min(20.0, real_gain_now))   # 界面增益 0~20
+                offset_gain  = real_gain_now - display_gain
+                g_fake_exp_coeff = self._offset2exp(offset_gain)  # 修复：使用 self.
+
+                # 回显到界面
+                self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
+                self.gain_input.setText(f"{display_gain:.2f}")
+                self.log("自动调节完成（仅增益生效，积分系数已同步）")
+            else:
+                self.log("自动调节失败")
+                QMessageBox.critical(self, "错误", "自动调节失败")
+
+            # 如果原来在采集，恢复
+            if self.pbPlay.isEnabled() == False and self.pbStop.isEnabled() == True:
+                self.log("恢复图像采集")
+                self.camPlay()
+
+        except Exception as e:
+            self.log(f"自动调节失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"自动调节失败:\n{str(e)}")
     def camConnect(self):
         if self.external_mode:
             self.log("当前处于外部图片模式，请先退出图片模式再连接相机")
@@ -632,7 +635,7 @@ class main_Dialog(QWidget):
         global g_fake_exp_coeff
 
         g_fake_exp_coeff = 50.0                            # 初始积分系数
-        startup_gain = 5.0 + _exp2offset(g_fake_exp_coeff)  # 合成增益
+        startup_gain = 5.0 + self._exp2offset(g_fake_exp_coeff)  # 合成增益
         SetupGain(self.device, startup_gain)               # 只写增益，不调曝光
 
         self.shutter_input.setText("50.0")                 # 界面回显

@@ -81,8 +81,11 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
 
         # 先抓取一帧初始图像进行光斑检测
         buf = stream.GetBuffer(2000)
-        if buf is None:
-            print("初始图像抓取失败，无法检测光斑")
+
+        # 检查缓冲区是否有效
+        if not hasattr(buf, 'GetBufferPtr') or buf.GetBufferPtr() is None:
+            print("初始缓冲区无效或为空")
+            stream.QueueBuffer(buf)
             return False
 
         # 转为 numpy 图像
@@ -93,12 +96,13 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
         initial_bright_value = np.percentile(img, percentile)
         print(f"初始检测: 第 {percentile}% 亮度 = {initial_bright_value:.2f}")
 
-        stream.QueueBuffer(buf)
-
         # 如果初始亮度低于阈值，认为没有光斑，不调节
         if initial_bright_value < min_bright_threshold:
             print(f"初始亮度 {initial_bright_value:.2f} < {min_bright_threshold}，无光斑检测到，不进行调节")
+            stream.QueueBuffer(buf)
             return True  # 返回True表示不调节，但操作成功（保持不变）
+
+        stream.QueueBuffer(buf)
 
         # 如果有光斑，继续调节
         current_exp = parExp.GetValue()[1]
@@ -108,6 +112,12 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
             buf = stream.GetBuffer(2000)
             if buf is None:
                 print(f"第 {i + 1} 次未抓到图像")
+                continue
+
+            # 检查缓冲区是否有效
+            if not hasattr(buf, 'GetBufferPtr') or buf.GetBufferPtr() is None:
+                print(f"第 {i + 1} 次缓冲区无效")
+                stream.QueueBuffer(buf)
                 continue
 
             # 转为 numpy 图像

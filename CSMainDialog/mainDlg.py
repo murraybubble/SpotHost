@@ -1054,7 +1054,7 @@ class main_Dialog(QWidget):
             btn.setProperty("algo_key", key)          # 把真正的 key 挂在按钮上
             self.btn_grp.addButton(btn, idx)
             control_layout.addWidget(btn)
-            if key == "A":
+            if key == "C":
                btn.setChecked(True)
 # 连接槽函数——只读 key，不再碰 text
         self.btn_grp.buttonClicked.connect(lambda b: setattr(self, 'algo_type', b.property("algo_key")))

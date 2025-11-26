@@ -447,7 +447,7 @@ class Camera2Widget(QWidget):
             btn.setProperty("algo_key", key)       
             self.btn_grp.addButton(btn, idx)
             algo_layout.addWidget(btn)
-            if key == "A":                         
+            if key == "C":                         
                 btn.setChecked(True)
 
         self.btn_grp.buttonClicked.connect(

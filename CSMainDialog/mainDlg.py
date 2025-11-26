@@ -31,7 +31,6 @@ if platform.system() == 'Windows':
 else:
     import libIpxCameraGuiApiPy as IpxCameraGuiApiPy
 
-
 class main_Dialog(QWidget):
     log_signal = pyqtSignal(str)
     show3d_finished = pyqtSignal(np.ndarray)
@@ -481,43 +480,60 @@ class main_Dialog(QWidget):
         while not self.stop:
             self.GrabNewBuffer()
         self.log("图像采集线程已停止")
-
+    # 伪积分时间系数 0~100
+    g_fake_exp_coeff = 50.0          # 启动默认值
+    g_real_gain_offset = 0.0         # 由系数算出的增益偏移
+    def _exp2offset(exp_coeff: float) -> float:
+        return exp_coeff * 0.2          # 例：100→20 dB,在这里该偏移量倍数！！！
+    def _offset2exp(offset: float) -> float:
+        return max(0.0, min(100.0, offset / 0.2))
     def auto_adjust(self):
-        global g_autoAdjust
+        global g_fake_exp_coeff, g_real_gain_offset
+
         if not hasattr(self, 'device') or not self.device.IsValid():
             self.log("相机未连接")
             QMessageBox.critical(self, "错误", "相机未连接")
             return
         try:
-            if hasattr(self, 'thread') and self.thread.is_alive():
-                self.log("暂停图像采集以进行自动调节")
-                self.camStop()
+                # 如果采集线程在跑，先暂停
+                if hasattr(self, 'thread') and self.thread.is_alive():
+                    self.log("暂停图像采集以进行自动调节")
+                    self.camStop()
 
-            g_autoAdjust = True
-            success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
-            if success:
-                self.log("自动调节积分时间和增益成功")
-                pars = self.device.GetCameraParameters()
-                parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
-                parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
-                if parExp and parG:
-                    self.shutter_input.setText(f"{parExp.GetValue()[1]:.2f}")
-                    self.gain_input.setText(f"{parG.GetValue()[1]:.2f}")
-            else:
-                self.log("自动调节失败")
-                QMessageBox.critical(self, "错误", "自动调节失败")
+                # 仅调节增益，目标亮度 140±8
+                success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
+                if success:
+                    pars = self.device.GetCameraParameters()
+                    parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
+                    if parG is None:
+                        raise RuntimeError("无法获取 GainRaw")
+                    real_gain_now = parG.GetValue()[1]
 
-            if self.pbPlay.isEnabled() == False and self.pbStop.isEnabled() == True:
-                self.log("恢复图像采集")
-                self.camPlay()
+                    # 把真实增益拆成“界面增益”+“积分系数”
+                    display_gain = max(0.0, min(20.0, real_gain_now))   # 界面增益 0~20
+                    offset_gain  = real_gain_now - display_gain
+                    g_fake_exp_coeff = _offset2exp(offset_gain)
+
+                    # 回显到界面
+                    self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
+                    self.gain_input.setText(f"{display_gain:.2f}")
+                    self.log("自动调节完成（仅增益生效，积分系数已同步）")
+                else:
+                    self.log("自动调节失败")
+                    QMessageBox.critical(self, "错误", "自动调节失败")
+
+                # 如果原来在采集，恢复
+                if self.pbPlay.isEnabled() == False and self.pbStop.isEnabled() == True:
+                    self.log("恢复图像采集")
+                    self.camPlay()
 
         except Exception as e:
             self.log(f"自动调节失败: {str(e)}")
             QMessageBox.critical(self, "错误", f"自动调节失败:\n{str(e)}")
-        finally:
-            g_autoAdjust = False
 
     def confirm_settings(self):
+        global g_fake_exp_coeff, g_real_gain_offset
+
         if not hasattr(self, 'device') or not self.device.IsValid():
             self.log("相机未连接")
             QMessageBox.critical(self, "错误", "相机未连接")
@@ -537,53 +553,44 @@ class main_Dialog(QWidget):
             self.log("用户未输入任何值")
             return
 
-        success = True
+        try:
+            # 读取界面值
+            if shutter_text:
+                g_fake_exp_coeff = float(shutter_text)
+            if gain_text:
+                base_gain = float(gain_text)
+            else:
+                base_gain = 0.0
+        except ValueError:
+            QMessageBox.warning(self, "输入错误", "请输入数字")
+            self.log("输入格式错误")
+            return
 
-        if shutter_text:
-            try:
-                exp_value = float(shutter_text)
-                parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
-                if parExp is None:
-                    raise ValueError("不支持 ExposureTimeRaw 参数")
-                exp_min, exp_max = parExp.GetMin()[1], parExp.GetMax()[1]
-                if not (exp_min <= exp_value <= exp_max):
-                    QMessageBox.warning(self, "输入错误", f"请输入正确数值\n积分时间范围: [{exp_min}, {exp_max}]")
-                    self.log(f"积分时间 {exp_value} 超出范围 [{exp_min}, {exp_max}]")
-                    success = False
-                elif not SetupExposure(self.device, exp_value):
-                    success = False
-                else:
-                    self.log(f"积分时间设置为 {exp_value} us")
-            except ValueError:
-                QMessageBox.warning(self, "输入错误", "请输入正确数值\n积分时间必须是数字")
-                self.log(f"积分时间输入无效: {shutter_text}")
-                success = False
+        # 计算真正的增益
+        g_real_gain_offset = _exp2offset(g_fake_exp_coeff)
+        final_gain = base_gain + g_real_gain_offset
 
-        if gain_text:
-            try:
-                gain_value = float(gain_text)
-                parG = pars.GetInt("GainRaw") or pars.GetFloat("GainRaw")
-                if parG is None:
-                    raise ValueError("不支持 GainRaw 参数")
-                gain_min, gain_max = parG.GetMin()[1], parG.GetMax()[1]
-                if not (gain_min <= gain_value <= gain_max):
-                    QMessageBox.warning(self, "输入错误", f"请输入正确数值\n增益范围: [{gain_min}, {gain_max}]")
-                    self.log(f"增益 {gain_value} 超出范围 [{gain_min}, {gain_max}]")
-                    success = False
-                elif not SetupGain(self.device, gain_value):
-                    success = False
-                else:
-                    self.log(f"增益设置为 {gain_value}")
-            except ValueError:
-                QMessageBox.warning(self, "输入错误", "请输入正确数值\n增益必须是数字")
-                self.log(f"增益输入无效: {gain_text}")
-                success = False
+        # 范围检查（仅检查增益）
+        parG = pars.GetInt("GainRaw") or pars.GetFloat("GainRaw")
+        if parG is None:
+            QMessageBox.critical(self, "错误", "找不到 GainRaw")
+            return
+        gmin, gmax = parG.GetMin()[1], parG.GetMax()[1]
+        if not (gmin <= final_gain <= gmax):
+            QMessageBox.warning(self, "输入错误",
+                                f"合成增益 {final_gain:.2f} 超出范围 [{gmin}, {gmax}]")
+            return
 
-        if not success:
+        # 写入增益
+        try:
+            parG.SetValue(final_gain)
+            self.log(f"设置成功：合成增益={final_gain:.2f} "
+                    f"(界面增益={base_gain:.2f} 积分偏移={g_real_gain_offset:.2f})")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"写入增益失败:\n{e}")
             return
 
         QMessageBox.information(self, "成功", "参数设置成功！")
-        self.log("手动参数设置完成")
 
     def camConnect(self):
         if self.external_mode:
@@ -621,6 +628,16 @@ class main_Dialog(QWidget):
         self.gPars = self.device.GetCameraParameters()
 
         self.log(f"已连接相机：{self.deviceInfo.GetModel()} ({self.deviceInfo.GetSerialNumber()})")
+                # ===== 第5处：初始值写入（全局变量 & 只写增益）=====
+        global g_fake_exp_coeff
+
+        g_fake_exp_coeff = 50.0                            # 初始积分系数
+        startup_gain = 5.0 + _exp2offset(g_fake_exp_coeff)  # 合成增益
+        SetupGain(self.device, startup_gain)               # 只写增益，不调曝光
+
+        self.shutter_input.setText("50.0")                 # 界面回显
+        self.gain_input.setText("5.00")
+        # ==========================================
 
     def camAction(self):
         self.log("正在执行相机操作...")

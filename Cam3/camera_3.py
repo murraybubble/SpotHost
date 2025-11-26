@@ -1040,11 +1040,11 @@ class Camera3Widget(QWidget):
 
     def set_zoom(self, button):
         """设置电子放大倍数"""
-        zoom_level = 1
+        zoom_level = 0
         if button == self.zoom_2x_btn:
-            zoom_level = 2
+            zoom_level = 1
         elif button == self.zoom_4x_btn:
-            zoom_level = 4
+            zoom_level = 2
             
         if self.controller:
             self.controller.set_zoom(zoom_level)  # 假设控制器有此方法

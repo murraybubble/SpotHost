@@ -236,12 +236,21 @@ class main_Dialog(QWidget):
     def _process_cropped_image(self, imgs):
         try:
             cropped_img, spots_output, heatmap = imgs
+
+            # 更新 4 个窗格中的前 3 个
             self.show_cv_image(self.label1, cropped_img)
             self.show_cv_image(self.label2, spots_output)
             self.show_cv_image(self.label3, heatmap)
-            self.log("已更新裁切后的图像及处理结果")
+
+            # 更新内部状态，便于 3D 重构使用
+            self.last_original_image = cropped_img.copy()
+            self.last_gray = cv.cvtColor(cropped_img, cv.COLOR_BGR2GRAY)
+
+            self.log("已更新裁切图像及其处理结果")
+
         except Exception as e:
             self.log(f"更新裁切图像显示时出错: {e}")
+
 
     # =========== 外部图片导入模式 ===========
 
@@ -407,13 +416,37 @@ class main_Dialog(QWidget):
         return self.list1
 
     def show_cv_image(self, label, img):
-        if len(img.shape) == 2:
-            qImg = QImage(img.data, img.shape[1], img.shape[0], img.strides[0], QImage.Format_Grayscale8)
-        else:
-            img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-            qImg = QImage(img_rgb.data, img_rgb.shape[1], img_rgb.shape[0], img_rgb.strides[0], QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(qImg).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
-        label.setPixmap(pixmap)
+        try:
+            if img is None:
+                label.clear()
+                return
+
+            # 灰度图
+            if len(img.shape) == 2:
+                qImg = QImage(img.data, img.shape[1], img.shape[0],
+                            img.strides[0], QImage.Format_Grayscale8)
+
+            # BGR 彩色图
+            elif img.shape[2] == 3:
+                img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+                qImg = QImage(img_rgb.data, img_rgb.shape[1], img_rgb.shape[0],
+                            img_rgb.strides[0], QImage.Format_RGB888)
+
+            # BGRA → RGBA
+            elif img.shape[2] == 4:
+                img_rgba = cv.cvtColor(img, cv.COLOR_BGRA2RGBA)
+                qImg = QImage(img_rgba.data, img_rgba.shape[1], img_rgba.shape[0],
+                            img_rgba.strides[0], QImage.Format_RGBA8888)
+
+            else:
+                raise ValueError("不支持的图像格式")
+
+            pixmap = QPixmap.fromImage(qImg).scaled(label.width(), label.height(), Qt.KeepAspectRatio)
+            label.setPixmap(pixmap)
+
+        except Exception as e:
+            self.log(f"show_cv_image 错误: {e}")
+
 
     def GrabNewBuffer(self):
         # 若处于外部图片模式，则不再从相机取帧，避免状态混乱

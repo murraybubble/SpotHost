@@ -1,7 +1,7 @@
 #CommonStreamGUI.py
 import os
 
-# os.environ['IPX_CAMSDK_ROOT'] = os.path.dirname(os.path.abspath(__file__)) + '\Imperx Camera SDK'
+#os.environ['IPX_CAMSDK_ROOT'] = os.path.dirname(os.path.abspath(__file__)) + '\Imperx Camera SDK'
 
 import sys
 from PyQt5.QtGui import QIcon

@@ -3,7 +3,7 @@
 Cam1_Videos/
 
 # 保存的图片（自动截图、热力图、3D）
-Saved_Images/
+Saved_Files/
 
 # 如果未来有更多自动保存文件夹
 Saved_Results/

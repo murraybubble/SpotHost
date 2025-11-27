@@ -584,60 +584,115 @@ class main_Dialog(QWidget):
 
     def auto_adjust(self):
         """
-        自动调节增益（含积分系数同步）
-        1. 若正在预览，先暂停释放 stream；
-        2. 调节完成后再恢复预览。
+        相机一键测量（自动调节“积分时间 + 增益”的等效值）
+
+        思路：不再自己抓 buffer，而是利用实时预览线程更新的 self.last_gray，
+        按照画面亮度闭环调节 GainRaw，使第 99% 高亮像素的亮度接近目标值。
         """
         global g_fake_exp_coeff, g_real_gain_offset
-        self.adjusting = True
-        # ---- 基本检查 ----
+
+        # ---- 1. 基本检查 ----
         if not hasattr(self, 'device') or not self.device.IsValid():
             self.log("相机未连接")
             QMessageBox.critical(self, "错误", "相机未连接")
             return
 
-        # ---- 1. 如果采集线程在跑，先暂停（释放 stream 占用） ----
-        was_running = False
-        if hasattr(self, 'thread') and self.thread.is_alive():
-            was_running = True
-            self.log("暂停图像采集以进行自动调节")
-            self.camStop()          # 你已有的函数：StopAcquisition+RevokeBuffer
-            time.sleep(0.15)        # 给 SDK 足够释放时间
+        # 必须处于“正在预览”状态（否则 last_gray 不更新）
+        if not (hasattr(self, 'thread') and self.thread is not None and self.thread.is_alive()):
+            self.log("当前未在回放，相机没有实时图像，无法自动调节")
+            QMessageBox.information(self, "提示", "请先点击“开始”按钮，让相机有实时图像，再进行一键测量")
+            return
 
-        # ---- 2. 现在 stream 空闲，开始调节 ----
+        if self.last_gray is None:
+            self.log("当前没有有效图像（last_gray 为空），无法自动调节")
+            QMessageBox.information(self, "提示", "请先让相机运行几帧，让画面稳定后再点击一键测量")
+            return
+
         try:
-            success = AutoAdjustExposureGain(self.device,
-                                            target=140.0,
-                                            tol=8.0,
-                                            max_iter=10)
-            if success:
-                pars = self.device.GetCameraParameters()
-                parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
-                if parG is None:
-                    raise RuntimeError("无法获取 GainRaw")
-                real_gain_now = parG.GetValue()[1]
+            pars = self.device.GetCameraParameters()
+            if pars is None:
+                self.log("无法获取相机参数")
+                QMessageBox.critical(self, "错误", "无法获取相机参数")
+                return
 
-                # 把真实增益拆成“界面增益 0~20” + “积分系数 0~32768”
-                display_gain = max(0.0, min(20.0, real_gain_now))
-                offset_gain  = real_gain_now - display_gain
-                g_fake_exp_coeff = self._offset2exp(offset_gain)   # 0~32768
+            # 这里只调 GainRaw，不直接调曝光时间，积分时间等效到“积分系数”
+            parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
+            if parG is None:
+                self.log("找不到 GainRaw 参数")
+                QMessageBox.critical(self, "错误", "相机不支持 GainRaw 参数")
+                return
 
-                # 回显到界面
-                self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
-                self.gain_input.setText(f"{display_gain:.2f}")
-                self.log("自动调节完成（仅增益生效，积分系数已同步）")
-            else:
-                self.log("自动调节失败")
-                QMessageBox.critical(self, "错误", "自动调节失败")
+            gmin, gmax = parG.GetMin()[1], parG.GetMax()[1]
+            current_gain = parG.GetValue()[1]
+
+            # 自动调节目标 / 参数
+            target = 140.0      # 目标亮度（0~255）
+            tol = 8.0           # 容差
+            percentile = 99.0   # 取第 99% 高亮像素
+            max_iter = 8        # 最大迭代次数
+            min_bright = 30.0   # 初始亮度过低 → 认为没光斑，直接失败
+
+            self.log("开始自动调节增益（基于实时图像的亮度闭环）...")
+
+            # ---- 2. 初次检查亮度 ----
+            gray0 = self.last_gray
+            initial_bright = float(np.percentile(gray0, percentile))
+            self.log(f"[自动调节] 初始亮度 P{percentile} = {initial_bright:.1f}")
+
+            if initial_bright < min_bright:
+                self.log(f"[自动调节] 初始亮度 {initial_bright:.1f} 低于阈值 {min_bright}，可能没有光斑，终止自动调节")
+                QMessageBox.information(self, "提示", "当前画面过暗或无光斑，自动调节无法进行")
+                return
+
+            # ---- 3. 迭代闭环调节 ----
+            for i in range(max_iter):
+                # 每轮都用最新的 last_gray
+                gray = self.last_gray
+                if gray is None:
+                    self.log(f"[自动调节] 第 {i+1} 轮：没有最新图像，等待下一帧")
+                    time.sleep(0.15)
+                    continue
+
+                bright = float(np.percentile(gray, percentile))
+                self.log(f"[自动调节] 第 {i+1} 轮：P{percentile} = {bright:.1f}，当前增益 = {current_gain:.2f}")
+
+                # 判断是否已在目标范围内
+                if abs(bright - target) <= tol:
+                    self.log(f"[自动调节] 亮度已在目标范围 [{target-tol}, {target+tol}] 内，停止调节")
+                    break
+
+                # 计算调整系数（防止除 0）
+                factor = target / (bright + 1e-6)
+
+                # 更新增益（限制在相机允许范围内）
+                new_gain = float(np.clip(current_gain * factor, gmin, gmax))
+                parG.SetValue(new_gain)
+                self.log(f"[自动调节] 调整增益：{current_gain:.2f} → {new_gain:.2f}")
+                current_gain = new_gain
+
+                # 等待相机输出新亮度
+                time.sleep(0.2)
+
+            # ---- 4. 调节完成后，同步到界面“积分时间 + 增益” ----
+            # 把真实增益拆成 界面增益(0~20) + 积分偏移
+            display_gain = max(0.0, min(20.0, current_gain))
+            offset_gain = current_gain - display_gain
+            g_real_gain_offset = offset_gain
+            g_fake_exp_coeff = self._offset2exp(offset_gain)
+
+            self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
+            self.gain_input.setText(f"{display_gain:.2f}")
+
+            self.log(f"自动调节完成：最终合成增益={current_gain:.2f} "
+                     f"(界面增益={display_gain:.2f}，积分偏移={offset_gain:.2f}，积分系数={g_fake_exp_coeff:.1f})")
+
+            QMessageBox.information(self, "提示", "自动调节完成")
+
         except Exception as e:
             self.log(f"自动调节失败: {str(e)}")
             QMessageBox.critical(self, "错误", f"自动调节失败:\n{str(e)}")
-        finally:
-            # ---- 3. 如果原来在采集，恢复 ----
-            if was_running:
-                self.log("恢复图像采集")
-                self.camPlay()
-        self.adjusting = False
+
+
             
     def camConnect(self):
         if self.external_mode:
@@ -656,7 +711,7 @@ class main_Dialog(QWidget):
         self.pbPlay.setEnabled(1)
         self.pbStop.setEnabled(0)
         self.pbTree.setEnabled(1)
-        self.pbAutoAdjust.setEnabled(1)
+        self.pbAutoAdjust.setEnabled(0)
         self.pbConfirmSettings.setEnabled(1)
         self.pbCropImage.setEnabled(1)
         self.pbSaveSettings.setEnabled(1)
@@ -740,7 +795,7 @@ class main_Dialog(QWidget):
         self.gPars.ExecuteCommand("AcquisitionStart")
         self.thread = Thread(target=self.threaded_function)
         self.thread.start()
-        self.pbAutoAdjust.setEnabled(0)
+        self.pbAutoAdjust.setEnabled(1)
         self.pbStop.setEnabled(1)
         self.pbCropImage.setEnabled(0)
         self.log("相机回放已开始")
@@ -770,7 +825,7 @@ class main_Dialog(QWidget):
         if hasattr(self, 'gPars'):
             self.gPars.SetIntegerValue("TLParamsLocked", 0)
 
-        self.pbAutoAdjust.setEnabled(1)  # 在停止操作后启用一键测量按钮
+        # self.pbAutoAdjust.setEnabled(1)  # 在停止操作后启用一键测量按钮
         self.pbPlay.setEnabled(1)
         self.pbCropImage.setEnabled(1)
         self.log("相机回放已停止")
@@ -846,6 +901,10 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
+            
+            self.last_spots_output = spots_output
+            self.last_heatmap = heatmap
+    
             center,area = get_center_area()
             self.log(f"光斑坐标：{center}")
             self.log(f"光斑面积：{area}")

@@ -930,14 +930,26 @@ class Camera3Widget(QWidget):
         self.show_cv_image(self.label4, image_3d)
 
     def _process_cropped_image(self, cropped_img):
+        """裁切后的图像处理：必须同步更新 last_gray / last_original_image 才能让3D联动"""
+        if cropped_img is None:
+            return
+
+        # 强制更新为裁切图像
         self.cropped_image = cropped_img
-        if cropped_img is not None:
-            gray, blur = preprocess_image_cv(cropped_img)
-            spots_output = detect_spots(cropped_img, self.algo_type)
-            heatmap = energy_distribution(gray)
-            self.show_cv_image(self.label1, cropped_img)
-            self.show_cv_image(self.label2, spots_output)
-            self.show_cv_image(self.label3, heatmap)
+        self.last_original_image = cropped_img.copy()
+
+        # 重新处理裁切图像
+        gray, _ = preprocess_image_cv(cropped_img)
+        spots_output = detect_spots(cropped_img, self.algo_type)
+        heatmap = energy_distribution(gray)
+
+        # 更新三个窗格
+        self.show_cv_image(self.label1, cropped_img)
+        self.show_cv_image(self.label2, spots_output)
+        self.show_cv_image(self.label3, heatmap)
+
+        # 更新 last_gray，
+        self.last_gray = gray
 
     def crop_image(self):
         if self.last_original_image is None:

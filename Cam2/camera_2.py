@@ -916,14 +916,22 @@ class Camera2Widget(QWidget):
             self.update_status("图像裁切完成")
 
     def on_cropped_image_processed(self, results):
-        """处理裁切后的图像结果"""
+        """裁切后的处理结果：务必同步更新 last_gray 和 last_original_image"""
         if not results:
             return
-            
+
         frame, spots_output, heatmap, gray = results
+
+        # 更新显示
         self.show_cv_image(self.label1, frame)
         self.show_cv_image(self.label2, spots_output)
         self.show_cv_image(self.label3, heatmap)
+
+        # 同步更新，用于 3D 重构
+        self.cropped_image = frame.copy()
+        self.last_original_image = frame.copy()
+        self.last_gray = gray
+
 
     def crop_image(self):
         if self.last_original_image is None:

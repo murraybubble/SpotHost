@@ -846,6 +846,10 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
+            
+            self.last_spots_output = spots_output
+            self.last_heatmap = heatmap
+    
             center,area = get_center_area()
             self.log(f"光斑坐标：{center}")
             self.log(f"光斑面积：{area}")

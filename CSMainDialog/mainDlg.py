@@ -600,7 +600,7 @@ class main_Dialog(QWidget):
         # 必须处于“正在预览”状态（否则 last_gray 不更新）
         if not (hasattr(self, 'thread') and self.thread is not None and self.thread.is_alive()):
             self.log("当前未在回放，相机没有实时图像，无法自动调节")
-            QMessageBox.information(self, "提示", "请先点击“开始回放”，让相机有实时图像，再进行一键测量")
+            QMessageBox.information(self, "提示", "请先点击“开始”按钮，让相机有实时图像，再进行一键测量")
             return
 
         if self.last_gray is None:

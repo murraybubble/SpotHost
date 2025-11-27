@@ -524,15 +524,15 @@ class main_Dialog(QWidget):
             self.GrabNewBuffer()
         self.log("图像采集线程已停止")
     # 伪积分时间系数 0~100
-    g_fake_exp_coeff = 50.0          # 启动默认值
+    g_fake_exp_coeff = 16384.0           # 启动默认值,上限一半
     g_real_gain_offset = 0.0         # 由系数算出的增益偏移
     def _exp2offset(self, exp_coeff: float) -> float:
             """将积分系数转换为增益偏移量"""
-            return exp_coeff * 0.2  # 根据实际需求调整这个倍数
+            return exp_coeff * 0.00625 # 根据实际需求调整这个倍数
 
     def _offset2exp(self, offset: float) -> float:
         """将增益偏移量转换为积分系数"""
-        return max(0.0, min(100.0, offset / 0.2))
+        return max(0.0, min(32768.0, offset / 0.00625))
     def confirm_settings(self):
         global g_fake_exp_coeff, g_real_gain_offset
 
@@ -623,9 +623,10 @@ class main_Dialog(QWidget):
                 g_fake_exp_coeff = self._offset2exp(offset_gain)  # 修复：使用 self.
 
                 # 回显到界面
+                self.shutter_input.setValidator(QIntValidator(0, 32768, self))
                 self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
                 self.gain_input.setText(f"{display_gain:.2f}")
-                self.log("自动调节完成（仅增益生效，积分系数已同步）")
+                self.log("自动调节完成")
             else:
                 self.log("自动调节失败")
                 QMessageBox.critical(self, "错误", "自动调节失败")

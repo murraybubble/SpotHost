@@ -238,6 +238,7 @@ class main_Dialog(QWidget):
             self.cropped_image = cropped_img
             self.last_gray = gray
             self.last_original_image = cropped_img.copy()
+        
 
             # 发信号到主线程显示
             self.cropped_image_signal.emit((cropped_img, spots_output, heatmap))
@@ -258,6 +259,8 @@ class main_Dialog(QWidget):
             # 更新内部状态，便于 3D 重构使用
             self.last_original_image = cropped_img.copy()
             self.last_gray = cv.cvtColor(cropped_img, cv.COLOR_BGR2GRAY)
+            self.last_spots_output = spots_output
+            self.last_heatmap = heatmap
 
             self.log("已更新裁切图像及其处理结果")
 
@@ -373,43 +376,25 @@ class main_Dialog(QWidget):
         os.makedirs(save_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-        def save_label_image(label, name):
-            pixmap = label.pixmap()
-            if pixmap is None:
-                self.log(f"⚠️ {name} 窗格为空，跳过保存。")
-                return False
-
-            qimg = pixmap.toImage().convertToFormat(QImage.Format_RGB888)
-            w, h = qimg.width(), qimg.height()
-            ptr = qimg.bits()
-            ptr.setsize(qimg.byteCount())
-            arr = np.frombuffer(ptr, np.uint8)
-            try:
-                arr = arr.reshape((h, w, 3))
-            except Exception as e:
-                self.log(f"❌ 转换 {name} 图像失败: {e}")
-                return False
-            img_bgr = cv.cvtColor(arr, cv.COLOR_RGB2BGR)
-
+        def save_numpy_image(img, name):
+            if img is None:
+                self.log(f"⚠️ {name} 图像不存在，跳过保存。")
+                return
             file_path = os.path.join(save_dir, f"{timestamp}_{name}.jpg")
-            success = cv.imwrite(file_path, img_bgr)
+            success = cv.imwrite(file_path, img)
             if success:
                 self.log(f"✅ 已保存 {file_path}")
             else:
                 self.log(f"❌ 保存 {name} 失败。")
-            return success
 
-        save_label_image(self.label1, "original")
-        save_label_image(self.label2, "spots")
-        save_label_image(self.label3, "heatmap")
-        save_label_image(self.label4, "3d")
+        # 使用真正的 numpy 数据，而不是 UI label 缩放后的pixmap
+        save_numpy_image(self.last_original_image, "original")
+        save_numpy_image(self.last_spots_output, "spots")
+        save_numpy_image(self.last_heatmap, "heatmap")
+        save_numpy_image(self.last_3d_image, "3d")
 
-        # log_path = os.path.join(save_dir, f"{timestamp}_spots.txt")
-        # with open(log_path, "w", encoding="utf-8") as f:
-        #     f.write(self.log_text_edit.toPlainText())
-
-        # self.log(f"📝 已保存日志到 {log_path}")
         self.log("✅ 保存图片完成。")
+
 
     
     def CreateDataStreamBuffers(self):
@@ -861,6 +846,10 @@ class main_Dialog(QWidget):
                 self.show_cv_image(self.label2, spots_output)
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
+            
+            self.last_spots_output = spots_output
+            self.last_heatmap = heatmap
+    
             center,area = get_center_area()
             self.log(f"光斑坐标：{center}")
             self.log(f"光斑面积：{area}")

@@ -902,6 +902,7 @@ class Camera2Widget(QWidget):
         self.show_cv_image(self.label4, image_3d)
 
     def _process_cropped_image(self, cropped_img):
+        
         self.cropped_image = cropped_img
         if cropped_img is not None:
             # 停止当前可能正在运行的处理任务
@@ -937,7 +938,9 @@ class Camera2Widget(QWidget):
         if self.last_original_image is None:
             QMessageBox.warning(self, "警告", "没有可裁切的图像，请先获取视频帧")
             return
-            
+        elif self.camera_thread.isRunning():
+            QMessageBox.warning(self, "警告", "请暂停视频流后进行裁切")
+            return
         dialog = CropDialog(self, self.last_original_image)
         if dialog.exec_():
             cropped_img = dialog.get_cropped_image()

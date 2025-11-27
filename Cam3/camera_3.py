@@ -964,7 +964,9 @@ class Camera3Widget(QWidget):
         if self.last_original_image is None:
             QMessageBox.warning(self, "警告", "没有可裁切的图像，请先获取视频帧")
             return
-            
+        elif self.camera_thread.isRunning():
+            QMessageBox.warning(self, "警告", "请暂停视频流后进行裁切")
+            return
         dialog = CropDialog(self, self.last_original_image)
         if dialog.exec_():
             cropped_img = dialog.get_cropped_image()

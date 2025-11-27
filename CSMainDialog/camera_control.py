@@ -29,147 +29,156 @@ else:
 
 
 
-def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percentile=99.0, min_bright_threshold=50.0):
+def AutoAdjustExposureGain(camera,
+                           target=200,
+                           tol=10,
+                           max_iter=10,
+                           percentile=99.0,
+                           min_bright_threshold=30):
     """
-    自动调节曝光和增益，使图像中第 percentile% 最亮的像素平均亮度接近 target。
-    特别适合：有局部光斑/激光点、背景黑暗的场景（避免过曝噪声）
-    修改：如果初始图像中第 percentile% 最亮的像素平均亮度低于 min_bright_threshold，则认为没有光斑，不进行调节。
-
-    参数:
-        target: 目标亮度 (建议 180~220 for 8bit)
-        tol: 容差
-        max_iter: 最大迭代次数
-        percentile: 使用第几个百分位的亮度作为判断依据，推荐 99.0 ~ 99.9
-                    99.0  → 最亮的 1% 像素的平均值
-                    99.9  → 最亮的 0.1% 像素（更严格，只看最亮区域）
-        min_bright_threshold: 如果初始亮度低于此阈值，则认为没有光斑，不调节（默认50.0）
+    最稳固的自动曝光/增益调节函数。
+    关键点：
+    - Stop → StartAcq → QueueBuffer → ExecStart → GetBuffer
+    - 避免任何 None buffer
     """
     pars = camera.GetCameraParameters()
     parExp = pars.GetFloat("ExposureTimeRaw") or pars.GetInt("ExposureTimeRaw")
-    parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
-    if parExp is None or parG is None:
-        print("错误：相机不支持 ExposureTimeRaw 或 GainRaw 参数")
+    parGain = pars.GetFloat("GainRaw")        or pars.GetInt("GainRaw")
+    if parExp is None or parGain is None:
+        print("相机不支持曝光或增益参数")
         return False
 
     expMin, expMax = parExp.GetMin()[1], parExp.GetMax()[1]
-    gainMin, gainMax = parG.GetMin()[1], parG.GetMax()[1]
-
-    try:
-        acqMode = pars.GetEnum("AcquisitionMode")
-        if acqMode:
-            acqMode.SetValueStr("Continuous")
-    except:
-        pass
+    gainMin, gainMax = parGain.GetMin()[1], parGain.GetMax()[1]
 
     stream = camera.GetStreamByIndex(0)
     if stream is None:
-        print("错误：无法获取数据流")
+        print("无法获取 stream")
         return False
 
-    buffers = []
+    # -----------------------
+    #   停止采集，清空缓冲
+    # -----------------------
     try:
-        stream.FlushBuffers(stream.Flush_AllDiscard)
-        bufSize = stream.GetBufferSize()
-        numBuf = max(4, stream.GetMinNumBuffers())
-        buffers = [stream.CreateBuffer(bufSize) for _ in range(numBuf)]
-        for b in buffers:
-            stream.QueueBuffer(b)
+        pars.ExecuteCommand("AcquisitionStop")
+    except:
+        pass
+    try:
+        stream.StopAcquisition(1)
+    except:
+        pass
 
-        # stream.StartAcquisition()
-        # pars.ExecuteCommand("AcquisitionStart")
-        time.sleep(0.5)
+    stream.FlushBuffers(stream.Flush_AllDiscard)
 
-        # 先抓取一帧初始图像进行光斑检测
+    # -----------------------
+    #   重新启动采集
+    # -----------------------
+    stream.StartAcquisition()     # 顺序必须是先 StartAcq
+    time.sleep(0.05)
+
+    try:
+        pars.ExecuteCommand("AcquisitionStart")
+    except:
+        pass
+
+    # -----------------------
+    #   建立缓冲区
+    # -----------------------
+    buf_size = stream.GetBufferSize()
+    num_buf = max(4, stream.GetMinNumBuffers())
+    buffers = []
+    for _ in range(num_buf):
+        b = stream.CreateBuffer(buf_size)
+        stream.QueueBuffer(b)
+        buffers.append(b)
+
+    time.sleep(0.12)
+
+    # -----------------------
+    #   读取初始图像
+    # -----------------------
+    buf = stream.GetBuffer(3000)
+    if buf is None:
+        print("❌ 初始帧抓取超时（GetBuffer = None）")
+        return False
+
+    ptr = buf.GetBufferPtr()
+    if ptr is None:
+        print("❌ 初始缓冲区为空")
+        stream.QueueBuffer(buf)
+        return False
+
+    img = np.frombuffer(ptr, np.uint8).reshape(buf.GetHeight(), buf.GetWidth())
+    initial_bright = np.percentile(img, percentile)
+    stream.QueueBuffer(buf)
+
+    print(f"初始亮度 P{percentile} = {initial_bright:.2f}")
+
+    if initial_bright < min_bright_threshold:
+        print("⚠ 图像太暗，没有光斑，自动调节终止")
+        return False
+
+    # -----------------------
+    #   调节循环
+    # -----------------------
+    exp = parExp.GetValue()[1]
+    gain = parGain.GetValue()[1]
+
+    ok = False
+
+    for i in range(max_iter):
         buf = stream.GetBuffer(2000)
+        if buf is None or buf.GetBufferPtr() is None:
+            print(f"第 {i+1} 次抓取失败，继续下一轮")
+            continue
 
-        # 检查缓冲区是否有效
-        if not hasattr(buf, 'GetBufferPtr') or buf.GetBufferPtr() is None:
-            print("初始缓冲区无效或为空")
-            stream.QueueBuffer(buf)
-            return False
-
-        # 转为 numpy 图像
-        img = np.frombuffer(buf.GetBufferPtr(), dtype=np.uint8).reshape(
-            buf.GetHeight(), buf.GetWidth())
-
-        # 计算初始高百分位亮度
-        initial_bright_value = np.percentile(img, percentile)
-        print(f"初始检测: 第 {percentile}% 亮度 = {initial_bright_value:.2f}")
-
+        img = np.frombuffer(buf.GetBufferPtr(), np.uint8).reshape(buf.GetHeight(), buf.GetWidth())
         stream.QueueBuffer(buf)
 
-        # 如果有光斑，继续调节
-        current_exp = parExp.GetValue()[1]
-        current_gain = parG.GetValue()[1]
+        bright = np.percentile(img, percentile)
+        print(f"[{i+1}] 当前亮度: {bright:.2f} (exp={exp:.1f}, gain={gain:.2f})")
 
-        for i in range(max_iter):
-            buf = stream.GetBuffer(2000)
-            if buf is None:
-                print(f"第 {i + 1} 次未抓到图像")
-                continue
+        if abs(bright - target) <= tol:
+            print("亮度达到目标范围，调节完成")
+            ok = True
+            break
 
-            # 检查缓冲区是否有效
-            if not hasattr(buf, 'GetBufferPtr') or buf.GetBufferPtr() is None:
-                print(f"第 {i + 1} 次缓冲区无效")
-                stream.QueueBuffer(buf)
-                continue
+        factor = target / (bright + 1e-6)
 
-            # 转为 numpy 图像
-            img = np.frombuffer(buf.GetBufferPtr(), dtype=np.uint8).reshape(
-                buf.GetHeight(), buf.GetWidth())
+        # 先调曝光
+        new_exp = float(np.clip(exp * factor, expMin, expMax))
+        parExp.SetValue(new_exp)
 
-            # 关键修改：使用高百分位亮度，而不是全局平均
-            bright_value = np.percentile(img, percentile)
-            print(f"迭代 {i + 1}: 第 {percentile}% 亮度 = {bright_value:.2f}  "
-                  f"(曝光={current_exp:.1f}, 增益={current_gain:.2f})")
+        # 曝光触顶则调增益
+        if new_exp >= expMax * 0.98:
+            new_gain = float(np.clip(gain * factor, gainMin, gainMax))
+            parGain.SetValue(new_gain)
+            gain = new_gain
 
-            # 判断是否满足目标
-            if abs(bright_value - target) <= tol:
-                print(f"已达到目标亮度范围 [{target - tol}, {target + tol}]，停止调节")
-                stream.QueueBuffer(buf)
-                break
+        exp = new_exp
+        time.sleep(0.1)
 
-            # 计算调节倍率（避免除零）
-            factor = target / (bright_value + 1e-6)
+    # -----------------------
+    #   清理资源
+    # -----------------------
+    try:
+        pars.ExecuteCommand("AcquisitionStop")
+    except:
+        pass
+    try:
+        stream.StopAcquisition(1)
+    except:
+        pass
 
-            # 先调节曝光（优先）
-            new_exp = np.clip(current_exp * factor, expMin, expMax)
-            parExp.SetValue(new_exp)
+    for b in buffers:
+        stream.RevokeBuffer(b)
 
-            # 如果曝光已到上限但仍太暗，才动增益；如果过亮则先降曝光再降增益
-            if bright_value < target - tol and new_exp >= expMax * 0.98:
-                # 还暗，且曝光已近上限 → 增加增益
-                new_gain = np.clip(current_gain * factor * 1.2, gainMin, gainMax)  # 稍微多补一点
-                parG.SetValue(new_gain)
-                current_gain = new_gain
-            elif bright_value > target + tol and new_exp <= expMin * 1.02:
-                # 太亮了，且曝光已近下限 → 降低增益
-                new_gain = np.clip(current_gain / max(factor, 1.1), gainMin, gainMax)
-                parG.SetValue(new_gain)
-                current_gain = new_gain
+    stream.FlushBuffers(stream.Flush_AllDiscard)
+    print("自动调节完成，资源已释放")
 
-            current_exp = new_exp
-            stream.QueueBuffer(buf)
-            time.sleep(0.12)  # 给相机响应时间
+    return ok
 
-        else:
-            print("达到最大迭代次数，自动调节结束（可能未完全收敛）")
 
-    except Exception as e:
-        print(f"自动调节异常: {e}")
-        return False
-    finally:
-        try:
-            # pars.ExecuteCommand("AcquisitionStop")
-            # stream.StopAcquisition(1)
-            for b in buffers:
-                stream.RevokeBuffer(b)
-            stream.FlushBuffers(stream.Flush_AllDiscard)
-            print("自动调节完成，资源已释放")
-        except Exception as e:
-            print(f"清理资源失败: {e}")
-
-    return True
 
 def SetupExposure(camera, expValue):
     """

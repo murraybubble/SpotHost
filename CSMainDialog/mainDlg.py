@@ -670,7 +670,7 @@ class main_Dialog(QWidget):
         self.pbDisconnect.setEnabled(1)
         self.pbPlay.setEnabled(1)
         self.pbStop.setEnabled(0)
-        # self.pbTree.setEnabled(1)
+        self.pbTree.setEnabled(1)
         # self.pbAutoAdjust.setEnabled(1)
         self.pbConfirmSettings.setEnabled(1)
         self.pbCropImage.setEnabled(1)

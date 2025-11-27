@@ -670,8 +670,8 @@ class main_Dialog(QWidget):
         self.pbDisconnect.setEnabled(1)
         self.pbPlay.setEnabled(1)
         self.pbStop.setEnabled(0)
-        self.pbTree.setEnabled(1)
-        self.pbAutoAdjust.setEnabled(1)
+        # self.pbTree.setEnabled(1)
+        # self.pbAutoAdjust.setEnabled(1)
         self.pbConfirmSettings.setEnabled(1)
         self.pbCropImage.setEnabled(1)
         self.pbSaveSettings.setEnabled(1)
@@ -783,6 +783,7 @@ class main_Dialog(QWidget):
             self.data_stream.StopAcquisition(1)
         if hasattr(self, 'gPars'):
             self.gPars.SetIntegerValue("TLParamsLocked", 0)
+        self.pbAutoAdjust.setEnabled(1)
         self.pbPlay.setEnabled(1)
         self.pbCropImage.setEnabled(1)
         self.log("相机回放已停止")

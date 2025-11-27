@@ -101,6 +101,8 @@ class Camera2Thread(QThread):
                 self.status_signal.emit(error_msg)
                 print(f"[Camera2Thread] 错误: {error_msg} (标识: {self.thread_tag})")
                 self.running = False
+                self.cap.release()
+                self.cap = None
                 return
                 
             params = {
@@ -265,6 +267,8 @@ class Camera2Widget(QWidget):
         self.last_gray = None
         self.last_3d_image = None
         self.cropped_image = None
+        self.spot_output = None
+        self.heatmap = None
         
         # 录像相关变量
         self.is_recording = False
@@ -679,11 +683,16 @@ class Camera2Widget(QWidget):
         self.log_text_edit.verticalScrollBar().maximum()
         )
         print(f"[状态更新] {message}")
+        if message.startswith("无法连接长波相机"):
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            self.record_start_btn.setEnabled(False)
+            self.record_stop_btn.setEnabled(False)
 
     def start_or_resume_camera(self):
         print(f"[Camera2Widget] 点击开始/恢复按钮")
         
-        if not self.camera_thread:
+        if not self.camera_thread or not self.camera_thread.isRunning():
             self.camera_thread = Camera2Thread(self.rtsp_url)
             self.camera_thread.frame_signal.connect(self.process_frame)
             self.camera_thread.status_signal.connect(lambda msg: self.update_status(msg, "info"))
@@ -893,6 +902,10 @@ class Camera2Widget(QWidget):
         center,area = get_center_area()
         self.update_status(f"光斑坐标：{center}")
         self.update_status(f"光斑面积：{area}")
+
+        #更新图像
+        self.spot_output = spots_output
+        self.heatmap = heatmap
         
         if self.last_3d_image is not None:
             self.show_cv_image(self.label4, self.last_3d_image)
@@ -931,6 +944,8 @@ class Camera2Widget(QWidget):
         # 同步更新，用于 3D 重构
         self.cropped_image = frame.copy()
         self.last_original_image = frame.copy()
+        self.spot_output = spots_output
+        self.heatmap = heatmap
         self.last_gray = gray
 
 
@@ -981,13 +996,12 @@ class Camera2Widget(QWidget):
                 raise Exception(f"无法保存原图到 {orig_filename}")
 
             # 如果有处理后的图像也一并保存
-            if hasattr(self, 'last_processed_spots'):
-                spots_filename = f"{save_dir}/spots_{current_time}.png"
-                cv2.imwrite(spots_filename, self.last_processed_spots)
-                
-            if hasattr(self, 'last_processed_heatmap'):
-                heatmap_filename = f"{save_dir}/heatmap_{current_time}.png"
-                cv2.imwrite(heatmap_filename, self.last_processed_heatmap)
+
+            spots_filename = f"{save_dir}/spots_{current_time}.png"
+            cv2.imwrite(spots_filename, self.spot_output)
+            
+            heatmap_filename = f"{save_dir}/heatmap_{current_time}.png"
+            cv2.imwrite(heatmap_filename, self.heatmap)
                 
             if self.last_3d_image is not None:
                 img3d_filename = f"{save_dir}/3d_{current_time}.png"

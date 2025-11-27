@@ -223,6 +223,7 @@ class Camera3Widget(QWidget):
         self.last_gray = None
         self.last_3d_image = None
         self.cropped_image = None
+        self.heatmap = None
 
         # 录像相关变量
         self.is_recording = False
@@ -882,6 +883,10 @@ class Camera3Widget(QWidget):
             # 显示处理后的图像
             self.show_cv_image(self.label2, spots_output)
             self.show_cv_image(self.label3, heatmap)
+            self.heatmap = heatmap
+            center,area = get_center_area()
+            self.update_status(f"光斑坐标：{center}")
+            self.update_status(f"光斑面积：{area}")
             
         except Exception as e:
             error_msg = f"处理结果显示错误: {str(e)}"
@@ -1071,7 +1076,7 @@ class Camera3Widget(QWidget):
             
         if self.controller:
             self.controller.set_zoom(zoom_level)  # 假设控制器有此方法
-            self.update_status(f"电子放大已设置为 {zoom_level}倍")
+            self.update_status(f"电子放大已设置为 {2 ** zoom_level}倍")
 
     def set_integration_time(self):
         """设置积分时间"""
@@ -1112,6 +1117,12 @@ class Camera3Widget(QWidget):
             if self.last_3d_image is not None:
                 img3d_path = f"{save_dir}/Cam3_3d_{current_time}.png"
                 cv2.imwrite(img3d_path, self.last_3d_image)
+
+            if self.heatmap is not None:
+                heatmap_path = f"{save_dir}/Cam3_heatmap_{current_time}.png"
+                cv2.imwrite(heatmap_path, self.heatmap)
+
+            
                 
             self.update_status(f"数据保存完成，路径: {save_dir}")
         except Exception as e:

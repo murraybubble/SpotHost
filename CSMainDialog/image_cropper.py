@@ -72,54 +72,71 @@ class CropDialog(QDialog):
         )
         self.label.setPixmap(pixmap)
         
+    def _map_to_image(self, pos):
+        """把鼠标坐标映射到原图坐标（已考虑保持比例缩放 + 居中偏移）"""
+
+        if self.label.pixmap() is None:
+            return None
+
+        pm = self.label.pixmap()
+        if pm.isNull():
+            return None
+
+        # QLabel 显示区域大小
+        lw = self.label.width()
+        lh = self.label.height()
+
+        # pixmap 实际显示大小（保持比例缩放后的大小）
+        pm_w = pm.width()
+        pm_h = pm.height()
+
+        # 居中偏移量
+        offset_x = (lw - pm_w) // 2
+        offset_y = (lh - pm_h) // 2
+
+        # 鼠标不在 pixmap 区域内
+        if not (offset_x <= pos.x() <= offset_x + pm_w and
+                offset_y <= pos.y() <= offset_y + pm_h):
+            return None
+
+        # 计算鼠标在 pixmap 内的位置
+        x_in_pm = pos.x() - offset_x
+        y_in_pm = pos.y() - offset_y
+
+        # 缩放比例（原图 → pixmap）
+        scale_x = self.image.shape[1] / pm_w
+        scale_y = self.image.shape[0] / pm_h
+
+        # 映射回原图
+        img_x = int(x_in_pm * scale_x)
+        img_y = int(y_in_pm * scale_y)
+
+        # 越界保护
+        img_x = max(0, min(self.image.shape[1] - 1, img_x))
+        img_y = max(0, min(self.image.shape[0] - 1, img_y))
+
+        return img_x, img_y
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.label.underMouse():
-            # 转换坐标到图像坐标系
-            label_rect = self.label.rect()
-            pixmap = self.label.pixmap()
-            
-            if pixmap.isNull():
+            mapped = self._map_to_image(event.pos())
+            if mapped is None:
                 return
-                
-            # 计算缩放比例
-            scale_x = pixmap.width() / label_rect.width()
-            scale_y = pixmap.height() / label_rect.height()
-            
-            # 计算图像上的坐标
-            pos = event.pos()
-            img_x = int(pos.x() * scale_x)
-            img_y = int(pos.y() * scale_y)
-            
-            # 确保坐标在图像范围内
-            img_x = max(0, min(img_x, self.image.shape[1] - 1))
-            img_y = max(0, min(img_y, self.image.shape[0] - 1))
-            
+            img_x, img_y = mapped
             self.start_point = QPoint(img_x, img_y)
             self.end_point = QPoint(img_x, img_y)
             self.is_selecting = True
+
             
     def mouseMoveEvent(self, event):
         if self.is_selecting and self.label.underMouse():
-            # 转换坐标到图像坐标系
-            label_rect = self.label.rect()
-            pixmap = self.label.pixmap()
-            
-            if pixmap.isNull():
+            mapped = self._map_to_image(event.pos())
+            if mapped is None:
                 return
-                
-            scale_x = pixmap.width() / label_rect.width()
-            scale_y = pixmap.height() / label_rect.height()
-            
-            pos = event.pos()
-            img_x = int(pos.x() * scale_x)
-            img_y = int(pos.y() * scale_y)
-            
-            img_x = max(0, min(img_x, self.image.shape[1] - 1))
-            img_y = max(0, min(img_y, self.image.shape[0] - 1))
-            
+            img_x, img_y = mapped
             self.end_point = QPoint(img_x, img_y)
             self.update_display()
-            
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.is_selecting:
             self.is_selecting = False

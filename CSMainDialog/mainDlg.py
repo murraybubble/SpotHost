@@ -755,6 +755,7 @@ class main_Dialog(QWidget):
         self.gPars.ExecuteCommand("AcquisitionStart")
         self.thread = Thread(target=self.threaded_function)
         self.thread.start()
+        self.pbAutoAdjust.setEnabled(0)
         self.pbStop.setEnabled(1)
         self.pbCropImage.setEnabled(0)
         self.log("相机回放已开始")

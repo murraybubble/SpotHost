@@ -64,8 +64,11 @@ class Camera3Thread(QThread):
             if not self.cap.isOpened():
                 error_msg = "无法连接中波相机（RTSP流打开失败）"
                 self.status_signal.emit(error_msg)
-                print(f"[Camera3Thread] 错误: {error_msg} (标识: {self.thread_tag})")
+                self.paused = True
                 self.running = False
+                print(f"[Camera3Thread] 错误: {error_msg} (标识: {self.thread_tag})")
+                self.cap.release()
+                self.cap = None
                 return
                 
             # 首次连接时发送视频参数
@@ -680,6 +683,12 @@ class Camera3Widget(QWidget):
         self.log_text_edit.verticalScrollBar().maximum()
         )
         print(f"[状态更新] {message}")
+        
+        if message.startswith("无法连接中波相机"):
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            self.record_start_btn.setEnabled(False)
+            self.record_stop_btn.setEnabled(False)
 
 
     def start_or_resume_camera(self):
@@ -688,7 +697,7 @@ class Camera3Widget(QWidget):
 
 
         # 情况1：线程未创建（首次启动）
-        if not self.camera_thread:
+        if not self.camera_thread or not self.camera_thread.isRunning():
             self.camera_thread = Camera3Thread(self.rtsp_url)
             self.camera_thread.frame_signal.connect(self.update_frame)
             self.camera_thread.status_signal.connect(self.update_status)
@@ -955,7 +964,9 @@ class Camera3Widget(QWidget):
         if self.last_original_image is None:
             QMessageBox.warning(self, "警告", "没有可裁切的图像，请先获取视频帧")
             return
-            
+        elif self.camera_thread.isRunning():
+            QMessageBox.warning(self, "警告", "请暂停视频流后进行裁切")
+            return
         dialog = CropDialog(self, self.last_original_image)
         if dialog.exec_():
             cropped_img = dialog.get_cropped_image()

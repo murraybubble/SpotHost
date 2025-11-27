@@ -37,7 +37,10 @@ class main_Dialog(QWidget):
     image_signal = pyqtSignal(object)
     cropped_image_signal = pyqtSignal(object)
     range_result_signal = pyqtSignal(MeasureResult)
-
+    def on_auto_clicked(self):
+        if self.adjusting:          
+            return
+        self.auto_adjust()          # 真正干活读取
     def __init__(self):
         super(main_Dialog, self).__init__()
         self.range_meter = DistanceMeterManager()
@@ -51,7 +54,7 @@ class main_Dialog(QWidget):
         self.stop = False
         self.parView = None
         self.algo_type = "A"
-
+        self.adjusting = False   #读图像初始标志位
         # 外部图片模式相关
         self.external_mode = False           # 当前是否处于外部图片模式
         self.external_image = None           # 最近一次导入的图片
@@ -595,21 +598,33 @@ class main_Dialog(QWidget):
         QMessageBox.information(self, "成功", "参数设置成功！")
 
     def auto_adjust(self):
+        """
+        自动调节增益（含积分系数同步）
+        1. 若正在预览，先暂停释放 stream；
+        2. 调节完成后再恢复预览。
+        """
         global g_fake_exp_coeff, g_real_gain_offset
-
+        self.adjusting = True
+        # ---- 基本检查 ----
         if not hasattr(self, 'device') or not self.device.IsValid():
             self.log("相机未连接")
             QMessageBox.critical(self, "错误", "相机未连接")
             return
-        
-        try:
-            # 如果采集线程在跑，先暂停
-            if hasattr(self, 'thread') and self.thread.is_alive():
-                self.log("暂停图像采集以进行自动调节")
-                self.camStop()
 
-            # 仅调节增益，目标亮度 140±8
-            success = AutoAdjustExposureGain(self.device, target=140.0, tol=8.0, max_iter=10)
+        # ---- 1. 如果采集线程在跑，先暂停（释放 stream 占用） ----
+        was_running = False
+        if hasattr(self, 'thread') and self.thread.is_alive():
+            was_running = True
+            self.log("暂停图像采集以进行自动调节")
+            self.camStop()          # 你已有的函数：StopAcquisition+RevokeBuffer
+            time.sleep(0.15)        # 给 SDK 足够释放时间
+
+        # ---- 2. 现在 stream 空闲，开始调节 ----
+        try:
+            success = AutoAdjustExposureGain(self.device,
+                                            target=140.0,
+                                            tol=8.0,
+                                            max_iter=10)
             if success:
                 pars = self.device.GetCameraParameters()
                 parG = pars.GetFloat("GainRaw") or pars.GetInt("GainRaw")
@@ -617,28 +632,28 @@ class main_Dialog(QWidget):
                     raise RuntimeError("无法获取 GainRaw")
                 real_gain_now = parG.GetValue()[1]
 
-                # 把真实增益拆成"界面增益"+"积分系数"
-                display_gain = max(0.0, min(20.0, real_gain_now))   # 界面增益 0~20
+                # 把真实增益拆成“界面增益 0~20” + “积分系数 0~32768”
+                display_gain = max(0.0, min(20.0, real_gain_now))
                 offset_gain  = real_gain_now - display_gain
-                g_fake_exp_coeff = self._offset2exp(offset_gain)  # 修复：使用 self.
+                g_fake_exp_coeff = self._offset2exp(offset_gain)   # 0~32768
 
                 # 回显到界面
-                self.shutter_input.setValidator(QIntValidator(0, 32768, self))
                 self.shutter_input.setText(f"{g_fake_exp_coeff:.1f}")
                 self.gain_input.setText(f"{display_gain:.2f}")
-                self.log("自动调节完成")
+                self.log("自动调节完成（仅增益生效，积分系数已同步）")
             else:
                 self.log("自动调节失败")
                 QMessageBox.critical(self, "错误", "自动调节失败")
-
-            # 如果原来在采集，恢复
-            if self.pbPlay.isEnabled() == False and self.pbStop.isEnabled() == True:
-                self.log("恢复图像采集")
-                self.camPlay()
-
         except Exception as e:
             self.log(f"自动调节失败: {str(e)}")
             QMessageBox.critical(self, "错误", f"自动调节失败:\n{str(e)}")
+        finally:
+            # ---- 3. 如果原来在采集，恢复 ----
+            if was_running:
+                self.log("恢复图像采集")
+                self.camPlay()
+        self.adjusting = False
+            
     def camConnect(self):
         if self.external_mode:
             self.log("当前处于外部图片模式，请先退出图片模式再连接相机")
@@ -1150,6 +1165,8 @@ class main_Dialog(QWidget):
         settings_layout = QGridLayout(settings_group)
 
         self.pbAutoAdjust = create_function_btn('一键测量', self.auto_adjust)
+        self.pbAutoAdjust.clicked.disconnect()                  # 先清空旧槽（保险）
+        self.pbAutoAdjust.clicked.connect(self.on_auto_clicked) # 走我们自己的拦截函数
         self.pbAutoAdjust.setEnabled(False)
         settings_layout.addWidget(self.pbAutoAdjust, 0, 0, 1, 2)
 

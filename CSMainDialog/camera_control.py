@@ -75,8 +75,8 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
         for b in buffers:
             stream.QueueBuffer(b)
 
-        stream.StartAcquisition()
-        pars.ExecuteCommand("AcquisitionStart")
+        # stream.StartAcquisition()
+        # pars.ExecuteCommand("AcquisitionStart")
         time.sleep(0.5)
 
         # 先抓取一帧初始图像进行光斑检测
@@ -95,12 +95,6 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
         # 计算初始高百分位亮度
         initial_bright_value = np.percentile(img, percentile)
         print(f"初始检测: 第 {percentile}% 亮度 = {initial_bright_value:.2f}")
-
-        # 如果初始亮度低于阈值，认为没有光斑，不调节
-        if initial_bright_value < min_bright_threshold:
-            print(f"初始亮度 {initial_bright_value:.2f} < {min_bright_threshold}，无光斑检测到，不进行调节")
-            stream.QueueBuffer(buf)
-            return True  # 返回True表示不调节，但操作成功（保持不变）
 
         stream.QueueBuffer(buf)
 
@@ -166,8 +160,8 @@ def AutoAdjustExposureGain(camera, target=200.0, tol=10.0, max_iter=10, percenti
         return False
     finally:
         try:
-            pars.ExecuteCommand("AcquisitionStop")
-            stream.StopAcquisition(1)
+            # pars.ExecuteCommand("AcquisitionStop")
+            # stream.StopAcquisition(1)
             for b in buffers:
                 stream.RevokeBuffer(b)
             stream.FlushBuffers(stream.Flush_AllDiscard)

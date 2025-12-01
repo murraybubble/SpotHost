@@ -925,11 +925,11 @@ class main_Dialog(QWidget):
         """启动完全独立的第二个 EXE 应用"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            exe_path = os.path.join(current_dir,"complete_version", "complete_version.exe")
+            exe_path = os.path.join(current_dir,"driver_last", "driver_last.exe")
             print(exe_path)
 
             if not os.path.exists(exe_path):
-                QMessageBox.warning(self, "错误", "找不到 complete_version.exe")
+                QMessageBox.warning(self, "错误", "找不到 driver_last.exe")
                 return
 
             subprocess.Popen([exe_path], shell=False)

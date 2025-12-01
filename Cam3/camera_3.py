@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QComboBox, QStackedWidget, QTableWidget, 
                             QTableWidgetItem, QLineEdit, QGridLayout, QButtonGroup,
                          QSpacerItem, QRadioButton, QScrollArea,QFileDialog)
-
+import serial
+import serial.tools.list_ports
 
 # 添加maindlg的系统路径
 current_script_path = os.path.abspath(__file__)
@@ -388,7 +389,7 @@ class Camera3Widget(QWidget):
         # 左侧控制面板（使用滚动区域，宽度减小以适应1080p）
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
-        left_scroll.setFixedWidth(350)  # 1080p下更窄的控制面板
+        left_scroll.setFixedWidth(430)  # 1080p下更窄的控制面板
         
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
@@ -413,6 +414,12 @@ class Camera3Widget(QWidget):
         serial_group = QGroupBox("串口连接")
         serial_layout = QHBoxLayout()
         
+        # 添加选择窗口
+
+        self.serial_combo = QComboBox()
+        self.serial_combo.setMinimumHeight(30)
+        serial_layout.addWidget(self.serial_combo)
+
         self.connect_serial_btn = QPushButton("🔌 连接串口")
         self.connect_serial_btn.setObjectName("func_btn")
         self.connect_serial_btn.setMinimumHeight(30)
@@ -603,7 +610,9 @@ class Camera3Widget(QWidget):
         content_layout.addWidget(right_panel, 1)  # 权重1，让显示区域尽可能大
         
         main_layout.addLayout(content_layout, 1)  # 权重1，让内容区域占据主要空间
-        
+        # 初始化时刷新串口列表
+        self.refresh_serial_ports()
+
         self.setStyleSheet("""
             QPushButton#func_btn {
                 font-size: 10pt;
@@ -1013,8 +1022,16 @@ class Camera3Widget(QWidget):
     # 串口控制函数
     def connect_serial(self):
         """连接串口"""
-        if self.controller.connect():
-            self.update_status("串口连接成功")
+        if self.serial_combo.currentText() in ["无可用串口", "获取失败"]:
+            QMessageBox.warning(self, "选择错误", "请先刷新并选择有效的串口")
+            return
+
+        # 提取串口设备名（如从"COM3 - USB Serial Port"中提取"COM3"）
+        selected_port = self.serial_combo.currentText().split(" - ")[0]
+        
+        if self.controller.connect(port=selected_port):
+            self.update_status(f"串口连接成功: {selected_port}")
+            self.serial_combo.setEnabled(False)  # 连接后禁用下拉框
             self.connect_serial_btn.setEnabled(False)
             self.disconnect_serial_btn.setEnabled(True)
             # 启用其他控制按钮
@@ -1025,8 +1042,9 @@ class Camera3Widget(QWidget):
             self.set_integration_btn.setEnabled(True)
             self.set_fps_btn.setEnabled(True)
         else:
-            self.update_status("串口连接失败")
-            QMessageBox.warning(self, "连接失败", "无法连接到串口设备，请检查设备是否正确连接")
+            self.update_status(f"串口连接失败: {selected_port}")
+            QMessageBox.warning(self, "连接失败", f"无法连接到串口 {selected_port}，请检查设备")
+
 
     def disconnect_serial(self):
         """断开串口连接"""
@@ -1034,6 +1052,7 @@ class Camera3Widget(QWidget):
         self.update_status("串口已断开连接")
         self.connect_serial_btn.setEnabled(True)
         self.disconnect_serial_btn.setEnabled(False)
+        self.serial_combo.setEnabled(True)  # 断开后启用下拉框
         # 禁用控制按钮
         self.tele_focus_btn.setEnabled(False)
         self.wide_focus_btn.setEnabled(False)
@@ -1041,6 +1060,26 @@ class Camera3Widget(QWidget):
         self.scene_compensation_btn.setEnabled(False)
         self.set_integration_btn.setEnabled(False)
         self.set_fps_btn.setEnabled(False)
+
+    # 串口列表的加载
+    def refresh_serial_ports(self):
+        """刷新可用串口列表"""
+        self.serial_combo.clear()
+        try:
+            ports = list(serial.tools.list_ports.comports())
+            if not ports:
+                self.serial_combo.addItem("无可用串口")
+                self.update_status("未发现可用串口")
+                return
+            
+            for port in ports:
+                # 显示串口名称和描述（如"COM3 - USB Serial Port"）
+                self.serial_combo.addItem(f"{port.device} - {port.description}")
+            
+            self.update_status(f"发现{len(ports)}个可用串口")
+        except Exception as e:
+            self.update_status(f"串口刷新失败: {str(e)}", level="error")
+            self.serial_combo.addItem("获取失败")
 
     def tele_focus(self):
         """调焦+"""

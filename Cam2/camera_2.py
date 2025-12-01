@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QComboBox, QStackedWidget, QTableWidget, 
                             QTableWidgetItem, QLineEdit, QGridLayout, QButtonGroup,
                             QFileDialog, QSizePolicy, QSpacerItem,QFileDialog)
+import serial
+import serial.tools.list_ports
 
 current_script_path = os.path.abspath(__file__)
 parent_dir = os.path.dirname(os.path.dirname(current_script_path))
@@ -515,6 +517,11 @@ class Camera2Widget(QWidget):
         serial_group = QGroupBox("串口控制")
         serial_layout = QHBoxLayout()
 
+        # 下拉选择菜单
+        self.serial_combo = QComboBox()
+        self.serial_combo.setMinimumHeight(30)
+        serial_layout.addWidget(self.serial_combo)
+
         # 连接按钮
         self.serial_conn_btn = QPushButton("连接")
         self.serial_conn_btn.setMinimumHeight(30)
@@ -670,7 +677,8 @@ class Camera2Widget(QWidget):
                 border-radius: 3px;
             }
         """)
-        
+        # 初始化时刷新串口列表
+        self.refresh_serial_ports()
         self.setLayout(main_layout)
         self.setMinimumSize(1200, 700)
         print(f"[Camera2Widget] UI初始化完成")
@@ -1017,20 +1025,31 @@ class Camera2Widget(QWidget):
 
     # 串口连接函数
     def connect_serial(self):
-        """连接串口"""
-        if self.controller.connect():
-            self.update_status("串口连接成功")
+        """连接选中的串口"""
+        if self.serial_combo.currentText() in ["无可用串口", "获取失败"]:
+            QMessageBox.warning(self, "选择错误", "请先刷新并选择有效的串口")
+            return
+
+        # 提取串口设备名（如从"COM3 - USB Serial Port"中提取"COM3"）
+        selected_port = self.serial_combo.currentText().split(" - ")[0]
+        
+        if self.controller.connect(port=selected_port):
+            self.update_status(f"串口连接成功: {selected_port}")
             self.serial_conn_btn.setEnabled(False)
             self.serial_disconn_btn.setEnabled(True)
+            self.serial_combo.setEnabled(False)  # 连接后禁用下拉框
+            self.refresh_serial_btn.setEnabled(False)
         else:
-            self.update_status("串口连接失败")
-            QMessageBox.warning(self, "连接失败", "无法连接到串口设备，请检查设备是否正确连接")
+            self.update_status(f"串口连接失败: {selected_port}")
+            QMessageBox.warning(self, "连接失败", f"无法连接到串口 {selected_port}，请检查设备")
 
     def disconnect_serial(self):
         """断开串口连接"""
         self.controller.disconnect()
         self.serial_conn_btn.setEnabled(True)
         self.serial_disconn_btn.setEnabled(False)
+        self.serial_combo.setEnabled(True)  # 断开后启用下拉框
+        self.refresh_serial_btn.setEnabled(True)
         self.update_status("串口已断开连接")
 
     def open_parameter_calculation_window(self):
@@ -1085,6 +1104,25 @@ class Camera2Widget(QWidget):
             except Exception as e:
                 self.update_status(f"设置细节增益失败: {str(e)}", level="error")
 
+
+    def refresh_serial_ports(self):
+        """刷新可用串口列表"""
+        self.serial_combo.clear()
+        try:
+            ports = list(serial.tools.list_ports.comports())
+            if not ports:
+                self.serial_combo.addItem("无可用串口")
+                self.update_status("未发现可用串口")
+                return
+            
+            for port in ports:
+                # 显示串口名称和描述（如"COM3 - USB Serial Port"）
+                self.serial_combo.addItem(f"{port.device} - {port.description}")
+            
+            self.update_status(f"发现{len(ports)}个可用串口")
+        except Exception as e:
+            self.update_status(f"串口刷新失败: {str(e)}", level="error")
+            self.serial_combo.addItem("获取失败")
 
     def update_params(self, params):
         self.video_params = params

@@ -30,7 +30,7 @@ from CSMainDialog.parameter_calculation import ParameterCalculationWindow
 from CSMainDialog.image_cropper import CropDialog
 from CSMainDialog.spot_algorithms import detect_spots,get_center_area
 
-camera_frame = 15
+camera_frame = 30
 
 class Camera3Thread(QThread):
     """相机线程（支持启动/暂停，复用资源）"""
@@ -1133,6 +1133,8 @@ class Camera3Widget(QWidget):
             fps = int(self.fps_input.text())
             if self.controller:
                 self.controller.set_frame_rate(fps)  # 假设控制器有此方法
+                global camera_frame
+                camera_frame = fps      # 帧频同步设置
                 self.update_status(f"帧频已设置为 {fps}Hz")
         except ValueError:
             QMessageBox.warning(self, "输入错误", "请输入有效的整数")

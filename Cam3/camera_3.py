@@ -906,7 +906,8 @@ class Camera3Widget(QWidget):
         try:  
             if img is None or img.size == 0:
                 return
-                
+            if len(img.shape) in (2, 3):          # 灰度或彩色
+               img = cv2.flip(img, 1)            # 1 表示水平翻转        
             # 获取标签尺寸
             label_width = label.width()
             label_height = label.height()

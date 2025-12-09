@@ -419,7 +419,7 @@ class main_Dialog(QWidget):
                 label.clear()
                 return
             if len(img.shape) in (2, 3):          # 灰度或彩色
-               img = cv2.flip(img, 1)            # 1 表示水平翻转     
+               img = cv.flip(img, 1)            # 1 表示水平翻转     
             # 灰度图
             if len(img.shape) == 2:
                 qImg = QImage(img.data, img.shape[1], img.shape[0],

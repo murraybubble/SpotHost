@@ -25,6 +25,11 @@ class CropDialog(QDialog):
         self.label.setMinimumSize(800, 600)
         self.update_display()
         layout.addWidget(self.label)
+
+        # 鼠标坐标显示
+        self.coord_label = QLabel("坐标: - , -")
+        self.coord_label.setAlignment(Qt.AlignLeft)
+        layout.addWidget(self.coord_label)
         
         # 按钮区域
         btn_layout = QHBoxLayout()
@@ -73,7 +78,7 @@ class CropDialog(QDialog):
         self.label.setPixmap(pixmap)
         
     def _map_to_image(self, pos):
-        """把鼠标坐标映射到原图坐标（已考虑保持比例缩放 + 居中偏移）"""
+        """把 QLabel 内部坐标映射到原图坐标 已考虑保持比例缩放和居中"""
 
         if self.label.pixmap() is None:
             return None
@@ -118,24 +123,45 @@ class CropDialog(QDialog):
         return img_x, img_y
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.label.underMouse():
-            mapped = self._map_to_image(event.pos())
+        if event.button() == Qt.LeftButton:
+            # 把对话框坐标转成 label 内部坐标
+            local_pos = self.label.mapFrom(self, event.pos())
+            mapped = self._map_to_image(local_pos)
             if mapped is None:
                 return
             img_x, img_y = mapped
+
             self.start_point = QPoint(img_x, img_y)
             self.end_point = QPoint(img_x, img_y)
             self.is_selecting = True
 
+            # 更新坐标显示
+            if hasattr(self, "coord_label"):
+                self.coord_label.setText(f"坐标: {img_x}, {img_y}")
+
             
     def mouseMoveEvent(self, event):
-        if self.is_selecting and self.label.underMouse():
-            mapped = self._map_to_image(event.pos())
-            if mapped is None:
-                return
-            img_x, img_y = mapped
+        # 把对话框坐标转成 label 内部坐标
+        local_pos = self.label.mapFrom(self, event.pos())
+        mapped = self._map_to_image(local_pos)
+
+        if mapped is None:
+            # 鼠标不在图像上时 清空显示
+            if hasattr(self, "coord_label"):
+                self.coord_label.setText("坐标: - , -")
+            return
+
+        img_x, img_y = mapped
+
+        # 实时显示当前鼠标在图像上的坐标
+        if hasattr(self, "coord_label"):
+            self.coord_label.setText(f"坐标: {img_x}, {img_y}")
+
+        # 若正在框选 同步更新终点并重绘矩形
+        if self.is_selecting:
             self.end_point = QPoint(img_x, img_y)
             self.update_display()
+
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.is_selecting:

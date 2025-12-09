@@ -209,7 +209,7 @@ class main_Dialog(QWidget):
         self.range_result_table.resizeColumnsToContents()
 
     def crop_image(self):
-        if hasattr(self, 'thread') and self.thread.is_alive():
+        if isinstance(getattr(self, 'thread', None), Thread) and self.thread.is_alive():
             QMessageBox.warning(self, "警告", "请先停止相机才能进行图像裁切")
             return
 
@@ -310,6 +310,9 @@ class main_Dialog(QWidget):
             self.log(f"已导入图片：{file_path}")
             self.external_image = img.copy()
             self._process_external_image(img)
+
+            # 导入图片后允许裁剪 即使没有连接相机
+            self.pbCropImage.setEnabled(True)
 
             self.external_mode = True
             self.pbImport.setText("🖼 退出图片模式")

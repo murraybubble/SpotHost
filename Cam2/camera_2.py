@@ -202,6 +202,7 @@ class ImageProcessingWorker(QRunnable):
                 
             # 保存原始图像引用
             original = self.frame
+            original = cv2.flip(original,1)
             
             # 图像处理
             gray, blur = preprocess_image_cv(original)
@@ -847,9 +848,7 @@ class Camera2Widget(QWidget):
         """优化图像显示逻辑，减少不必要的操作"""
         try:  
             if img is None or img.size == 0:
-                return
-            if len(img.shape) in (2, 3):          # 灰度或彩色
-               img = cv2.flip(img, 1)            # 1 表示水平翻转     
+                return 
             # 获取标签当前尺寸
             label_width = label.width()
             label_height = label.height()

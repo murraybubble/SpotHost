@@ -433,8 +433,6 @@ class main_Dialog(QWidget):
             if img is None:
                 label.clear()
                 return
-            if len(img.shape) in (2, 3):          # 灰度或彩色
-               img = cv.flip(img, 1)            # 1 表示水平翻转     
             # 灰度图
             if len(img.shape) == 2:
                 qImg = QImage(img.data, img.shape[1], img.shape[0],
@@ -479,6 +477,7 @@ class main_Dialog(QWidget):
 
         img = np.array(buffer.GetBufferPtr()).reshape((buffer.GetHeight(), buffer.GetWidth()))
         img_color = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
+        img_color = cv.flip(img_color,1)    #原始图像的左右镜像翻转
         self.last_original_image = img_color.copy()
 
         # ===== 录像：在这里写入视频帧 =====

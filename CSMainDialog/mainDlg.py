@@ -343,16 +343,28 @@ class main_Dialog(QWidget):
             # 更新状态，供3D重构等使用
             self.last_original_image = img_color.copy()
             self.last_gray = gray
+            self.last_spots_output = spots_output
+            self.last_heatmap = heatmap
 
             # 显示
             self.show_cv_image(self.label1, img_color)
             self.show_cv_image(self.label2, spots_output)
             self.show_cv_image(self.label3, heatmap)
-            self.log("外部图片处理完成：已更新原图、光斑识别、能量分布显示")
+            # 取得光斑中心和面积 并按照右上角原点输出
+            centers, areas = get_center_area()
+            if centers and isinstance(centers, list):
+                h, w = img_color.shape[:2]
+                centers_rt = [(w - x, y) for (x, y) in centers]
+                self.log(f"光斑坐标：{centers_rt}")
+            else:
+                self.log("光斑坐标：[]")
+
+            self.log(f"光斑面积：{areas}")
+            self.log("外部图片处理完成：已更新原图 光斑识别 能量分布显示")
+
         except Exception as e:
             self.log(f"处理外部图片时出错: {e}")
             QMessageBox.critical(self, "错误", f"处理外部图片时出错:\n{e}")
-
     # =========== 3D 重构 ===========
 
     def show_3d_image(self):
@@ -906,12 +918,22 @@ class main_Dialog(QWidget):
             if heatmap is not None:
                 self.show_cv_image(self.label3, heatmap)
             
+            # 记录最新的处理结果
             self.last_spots_output = spots_output
             self.last_heatmap = heatmap
-    
-            center,area = get_center_area()
-            self.log(f"光斑坐标：{center}")
-            self.log(f"光斑面积：{area}")
+
+            # 从算法模块取出光斑中心和面积
+            centers, areas = get_center_area()
+
+            # 以图像右上角为原点的坐标变换
+            if centers and isinstance(centers, list) and img_color is not None:
+                h, w = img_color.shape[:2]
+                centers_rt = [(w - x, y) for (x, y) in centers]
+                self.log(f"光斑坐标：{centers_rt}")
+            else:
+                self.log("光斑坐标：[]")
+
+            self.log(f"光斑面积：{areas}")
         except Exception as e:
             self.log(f"_update_display 异常: {e}")
 

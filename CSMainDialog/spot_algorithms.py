@@ -80,10 +80,11 @@ def _algo_A(img, max_spots=3):
         area = int(np.sum(mask > 0))
         areas.append(area)
         centers.append((int(x), int(y)))
-        # 写文字：面积 + 坐标
-        text = f"{area}px  ({x},{y})"
-        cv2.putText(out, text, (x + r + 5, y), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        # 标编号 
+        label_id = det + 1          # 当前是第几个光斑
+        cv2.putText(out, str(label_id), (x + r + 5, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0),
+                    1, cv2.LINE_AA)
         used |= mask.astype(bool)
         det += 1
     if not det:
@@ -147,9 +148,10 @@ def _algo_C(img, max_spots=1):
         area = int(np.sum(mask > 0))
         areas.append(area)
         centers.append((int(x), int(y)))
-        text = f"{area}px  ({x},{y})"
-        cv2.putText(out, text, (x + r + 5, y), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        label_id = det + 1
+        cv2.putText(out, str(label_id), (x + r + 5, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0),
+                    1, cv2.LINE_AA)
         used |= mask.astype(bool); det += 1
     if not det:
         print(f"【检测错误 {ERR_NO_VALID_SPOT}】最终可画光斑数为 0")

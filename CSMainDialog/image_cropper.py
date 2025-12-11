@@ -136,8 +136,10 @@ class CropDialog(QDialog):
             self.is_selecting = True
 
             # 更新坐标显示
-            if hasattr(self, "coord_label"):
-                self.coord_label.setText(f"坐标: {img_x}, {img_y}")
+            if hasattr(self, "coord_label") and self.image is not None:
+                h, w = self.image.shape[:2]
+                x_rt = w - img_x
+                self.coord_label.setText(f"坐标: ({x_rt}, {img_y})")
 
             
     def mouseMoveEvent(self, event):
@@ -154,9 +156,11 @@ class CropDialog(QDialog):
         img_x, img_y = mapped
 
         # 实时显示当前鼠标在图像上的坐标
-        if hasattr(self, "coord_label"):
-            self.coord_label.setText(f"坐标: {img_x}, {img_y}")
-
+        if hasattr(self, "coord_label") and self.image is not None:
+            h, w = self.image.shape[:2]
+            x_rt = w - img_x
+            self.coord_label.setText(f"坐标: ({x_rt}, {img_y})")
+            
         # 若正在框选 同步更新终点并重绘矩形
         if self.is_selecting:
             self.end_point = QPoint(img_x, img_y)

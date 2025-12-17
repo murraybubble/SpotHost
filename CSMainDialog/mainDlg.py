@@ -75,6 +75,8 @@ class main_Dialog(QWidget):
         self.video_writer = None         # cv2.VideoWriter 对象
         self.record_start_time = None    # 开始录像的时间字符串
         self.last_video_path = None      # 上一次录像文件路径
+        #镜像状态
+        self.is_mirrored = True
 
 
     def closeEvent(self, event):
@@ -224,6 +226,42 @@ class main_Dialog(QWidget):
                 self.log("图像裁切完成，正在处理...")
                 Thread(target=self._process_cropped_image_background,
                        args=(cropped_img,), daemon=True).start()
+    
+   # 位置：将此方法添加到 main_Dialog 类中 (建议放在 crop_image 附近)
+    def toggle_mirror(self):
+        """切换镜像状态，并刷新当前显示"""
+        self.is_mirrored = not self.is_mirrored
+        state_text = "开启" if self.is_mirrored else "关闭"
+        self.pbMirror.setText(f"🔁 镜像: {state_text}")
+        self.log(f"镜像模式已切换为: {state_text}")
+
+        # 如果是外部图片模式，重新处理原图即可
+        if self.external_mode and self.external_image is not None:
+            self._process_external_image(self.external_image)
+            return
+
+        # 如果是相机模式（无论暂停还是播放），立即刷新当前画面
+        # 原理：将当前缓存的“底图”进行翻转，然后重新进行光斑检测
+        if hasattr(self, 'last_original_image') and self.last_original_image is not None:
+            try:
+                # 1. 翻转底图 (翻转是可逆的，再翻转一次就回来了)
+                new_img = cv.flip(self.last_original_image, 1)
+                
+                # 2. 更新缓存，这样保存图片和3D重构也会用新方向
+                self.last_original_image = new_img.copy()
+                
+                # 3. 重新运行算法 (确保文字画在新的底图上，字就是正的)
+                # 注意：这里复用了 GrabNewBuffer 里的处理逻辑
+                gray, blur = preprocess_image_cv(new_img)
+                spots_output = detect_spots(new_img, self.algo_type)
+                heatmap = energy_distribution(gray)
+                self.last_gray = gray
+
+                # 4. 更新界面显示
+                self.image_signal.emit((new_img, spots_output, heatmap))
+                
+            except Exception as e:
+                self.log(f"镜像刷新失败: {e}")
 
     def _process_cropped_image_background(self, cropped_img):
         try:
@@ -335,19 +373,22 @@ class main_Dialog(QWidget):
         显示到四个窗格中的前3个；第4个由“显示3D”按钮触发。
         """
         try:
-            # 保持与实时相机同样的处理流程
-            gray, blur = preprocess_image_cv(img_color)
-            spots_output = detect_spots(img_color, self.algo_type)
+            img_processing = img_color.copy()
+            if self.is_mirrored:
+                img_processing = cv.flip(img_processing, 1)
+
+            gray, blur = preprocess_image_cv(img_processing)
+            spots_output = detect_spots(img_processing, self.algo_type)
             heatmap = energy_distribution(gray)
 
             # 更新状态，供3D重构等使用
-            self.last_original_image = img_color.copy()
+            self.last_original_image = img_processing.copy()
             self.last_gray = gray
             self.last_spots_output = spots_output
             self.last_heatmap = heatmap
 
             # 显示
-            self.show_cv_image(self.label1, img_color)
+            self.show_cv_image(self.label1, img_processing)
             self.show_cv_image(self.label2, spots_output)
             self.show_cv_image(self.label3, heatmap)
             # 取得光斑中心和面积 并按照右上角原点输出
@@ -433,6 +474,7 @@ class main_Dialog(QWidget):
             if img is None:
                 label.clear()
                 return
+    
             # 灰度图
             if len(img.shape) == 2:
                 qImg = QImage(img.data, img.shape[1], img.shape[0],
@@ -477,7 +519,8 @@ class main_Dialog(QWidget):
 
         img = np.array(buffer.GetBufferPtr()).reshape((buffer.GetHeight(), buffer.GetWidth()))
         img_color = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
-        img_color = cv.flip(img_color,1)    #原始图像的左右镜像翻转
+        if self.is_mirrored:
+            img_color = cv.flip(img_color,1)    #原始图像的左右镜像翻转
         self.last_original_image = img_color.copy()
 
         # ===== 录像：在这里写入视频帧 =====
@@ -1178,6 +1221,7 @@ class main_Dialog(QWidget):
                                                           self.open_parameter_calculation_window, True)
         self.pbImport = create_function_btn('导入图片', self.toggle_import_mode, True)
         self.pbRecord = create_function_btn('录制视频', self.toggle_record, False)
+        self.pbMirror = create_function_btn('🔁 镜像: 关闭', self.toggle_mirror, True)
 
 
         control_layout.addWidget(self.pbConnect)
@@ -1189,9 +1233,10 @@ class main_Dialog(QWidget):
         control_layout.addWidget(self.pbSaveLog)
         control_layout.addWidget(self.pbCropImage)
         control_layout.addWidget(self.pbShow3D)
+        control_layout.addWidget(self.pbMirror)
         control_layout.addWidget(self.pbSaveAll)
         control_layout.addWidget(self.pbParameterCalculation)
-        control_layout.addWidget(self.pbImport)   # 放在参数计算按钮旁边
+        control_layout.addWidget(self.pbImport)   
         control_layout.addWidget(self.pbRecord)
         control_layout.addWidget(QLabel(" | "))
         self.btn_grp = QButtonGroup(self)

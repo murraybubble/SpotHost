@@ -110,7 +110,7 @@ class Camera3Thread(QThread):
                     continue
                 
                 # 保存最后一帧并发送给UI，同时进行镜像翻转
-                frame = cv2.flip(frame)
+                frame = cv2.flip(frame, 1)
                 self.last_frame = frame
                 self.frame_signal.emit(frame)
                 
